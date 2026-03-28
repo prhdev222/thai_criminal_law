@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
-import { Search, BookOpen, Youtube, Map, FileText, Plus, X, ChevronRight, ChevronDown, Star, Edit3, Trash2, Tag, Clock, Save, PlayCircle, ArrowLeft, Sparkles, MessageSquare, CheckCircle, Circle, ExternalLink } from "lucide-react";
+import { useState, useEffect, useLayoutEffect, useCallback } from "react";
+import { Search, BookOpen, Youtube, Map, FileText, Plus, Minus, X, ChevronRight, ChevronDown, Star, Edit3, Trash2, Tag, Clock, Save, PlayCircle, ArrowLeft, Sparkles, MessageSquare, CheckCircle, Circle, ExternalLink, Sun, Moon, Lock } from "lucide-react";
+import { pdfPageForArticle, criminalLawPdfUrl, CRIMINAL_LAW_PDF } from "./articlePdfPages.js";
 
 // Storage: localStorage เสมอ + ถ้า VITE_USE_TURSO=1 จะ sync กับ Turso ผ่าน Cloudflare Pages Functions (/api/kv/*)
 const USE_TURSO =
@@ -60,7 +61,7 @@ const store = {
 };
 
 // ============================================================
-// COMPLETE DATA — ประมวลกฎหมายอาญาไทย (จาก PDF ทั้ง 2 ไฟล์)
+// COMPLETE DATA — ประมวลกฎหมายอาญาไทย (สอดคล้องเนื้อหาหลักจาก public/Criminal_law_update.pdf)
 // ============================================================
 const SECTIONS = [
 { id:"p1", label:"ภาค ๑ บทบัญญัติทั่วไป", type:"part", detail:"หลักการพื้นฐานของกฎหมายอาญา การใช้กฎหมาย โทษ วิธีการเพื่อความปลอดภัย ความรับผิดในทางอาญา การพยายาม ตัวการและผู้สนับสนุน อายุความ (มาตรา ๑ – ๑๐๖)", children:[
@@ -115,20 +116,20 @@ const SECTIONS = [
     // === หมวด 4 ความรับผิด ===
     { id:"d4", label:"หมวด ๔ ความรับผิดในทางอาญา", type:"division", children:[
       { id:"s59", label:"ม.๕๙ เจตนา (Mens Rea)", type:"section", num:"59",
-        summary:"เจตนาประสงค์ต่อผล หรือ ย่อมเล็งเห็นผล — หลักความรับผิดพื้นฐาน",
-        detail:"บุคคลจะต้องรับผิดในทางอาญาก็ต่อเมื่อได้กระทำโดยเจตนา เว้นแต่จะได้กระทำโดยประมาท ในกรณีที่กฎหมายบัญญัติให้ต้องรับผิดเมื่อได้กระทำโดยประมาท\n\nกระทำโดยเจตนา = กระทำโดยรู้สำนึกในการกระทำ และในขณะเดียวกัน:\n• ประสงค์ต่อผล = ต้องการให้ผลเกิดขึ้นโดยตรง\n• ย่อมเล็งเห็นผล = คาดเห็นได้ว่าผลจะเกิดขึ้น แม้ไม่ได้ต้องการโดยตรง\n\nกระทำโดยประมาท = กระทำโดยไม่ใช้ความระมัดระวังตามวิสัยและพฤติการณ์ ทั้งที่ใช้ความระมัดระวังได้แต่ไม่ใช้ หรือใช้ไม่เพียงพอ", penalty:"—" },
+        summary:"เจตนา (ประสงค์ต่อผล / ย่อมเล็งเห็นผล) ประมาท และนิยาม \"การกระทำ\" รวมถึงการงดเว้นที่ต้องกระทำเพื่อป้องกันผล",
+        detail:"บุคคลจะต้องรับผิดในทางอาญาก็ต่อเมื่อได้กระทำโดยเจตนา เว้นแต่จะได้กระทำโดยประมาท ในกรณีที่กฎหมายบัญญัติให้ต้องรับผิดเมื่อได้กระทำโดยประมาท หรือเว้นแต่ในกรณีที่กฎหมายบัญญัติไว้โดยแจ้งชัดให้ต้องรับผิดแม้ได้กระทำโดยไม่มีเจตนา\n\nกระทำโดยเจตนา ได้แก่กระทำโดยรู้สำนึกในการที่กระทำ และในขณะเดียวกันผู้กระทำประสงค์ต่อผล หรือย่อมเล็งเห็นผลของการกระทำนั้น\n• ประสงค์ต่อผล = ต้องการให้ผลเกิดขึ้นโดยตรง\n• ย่อมเล็งเห็นผล = คาดเห็นได้ว่าผลจะเกิดขึ้น แม้ไม่ได้ต้องการโดยตรง\n\nถ้าผู้กระทำมิได้รู้ข้อเท็จจริงอันเป็นองค์ประกอบของความผิด จะถือว่าผู้กระทำประสงค์ต่อผล หรือย่อมเล็งเห็นผลของการกระทำนั้นมิได้\n\nกระทำโดยประมาท ได้แก่กระทำความผิดมิใช่โดยเจตนา แต่กระทำโดยปราศจากความระมัดระวังซึ่งบุคคลในภาวะเช่นนั้นจักต้องมีตามวิสัยและพฤติการณ์ และผู้กระทำอาจใช้ความระมัดระวังเช่นว่านั้นได้ แต่หาได้ใช้ให้เพียงพอไม่\n\nการกระทำ ให้หมายความรวมถึงการให้เกิดผลอันหนึ่งอันใดขึ้นโดยงดเว้นการที่จักต้องกระทำเพื่อป้องกันผลนั้นด้วย (การละเว้นการกระทำที่มีหน้าที่ต้องกระทำเพื่อป้องกันผลร้าย — อ้างอิงข้อความตามฉบับใน public/Criminal_law_update.pdf)", penalty:"—" },
       { id:"s60", label:"ม.๖๐ เจตนาพลาด (Aberratio Ictus)", type:"section", num:"60",
-        summary:"เจตนาต่อบุคคลหนึ่ง ผลเกิดแก่อีกบุคคลหนึ่ง → โอนเจตนาไปยังผู้รับผลร้าย",
-        detail:"ผู้ใดเจตนาที่จะกระทำต่อบุคคลหนึ่ง แต่ผลของการกระทำเกิดแก่อีกบุคคลหนึ่งโดยพลาดไป ให้ถือว่าผู้นั้นกระทำโดยเจตนาแก่บุคคลซึ่งได้รับผลร้ายนั้น แต่ทั้งนี้ จะลงโทษผู้กระทำหนักกว่ากรณีที่ผู้กระทำมีเจตนากระทำแก่บุคคลนั้นโดยเฉพาะมิได้\n\nตัวอย่าง: ก. ยิง ข. แต่พลาดไปถูก ค. ตาย → ถือว่า ก. มีเจตนาฆ่า ค.", penalty:"ตามฐานความผิด" },
+        summary:"เจตนาต่อบุคคลหนึ่ง ผลเกิดแก่อีกบุคคลหนึ่ง → โอนเจตนาไปยังผู้รับผลร้าย (จำกัดการลงโทษหนักเพราะฐานะ/ความสัมพันธ์)",
+        detail:"ผู้ใดเจตนาที่จะกระทำต่อบุคคลหนึ่ง แต่ผลของการกระทำเกิดแก่อีกบุคคลหนึ่งโดยพลาดไป ให้ถือว่าผู้นั้นกระทำโดยเจตนาแก่บุคคลซึ่งได้รับผลร้ายจากการกระทำนั้น แต่ในกรณีที่กฎหมายบัญญัติให้ลงโทษหนักขึ้น เพราะฐานะของบุคคลหรือเพราะความสัมพันธ์ระหว่างผู้กระทำกับบุคคลที่ได้รับผลร้าย มิให้นำกฎหมายนั้นมาใช้บังคับเพื่อลงโทษผู้กระทำให้หนักขึ้น\n\nตัวอย่าง: ก. ยิง ข. แต่พลาดไปถูก ค. ตาย → ถือว่า ก. มีเจตนาฆ่า ค.", penalty:"ตามฐานความผิด" },
       { id:"s61", label:"ม.๖๑ สำคัญผิดในตัวบุคคล (Error in Persona)", type:"section", num:"61",
         summary:"สำคัญผิดว่าเป็นอีกบุคคลหนึ่ง ไม่ถือว่าไม่มีเจตนา",
         detail:"ผู้ใดเจตนาจะกระทำต่อบุคคลหนึ่ง แต่ได้กระทำต่ออีกบุคคลหนึ่ง โดยสำคัญผิดว่าเป็นบุคคลแรก ผู้กระทำจะยกเอาความสำคัญผิดเป็นข้อแก้ตัวว่ามิได้มีเจตนากระทำต่อบุคคลนั้นหาได้ไม่\n\nต่างจากเจตนาพลาด (ม.60) ตรงที่ ม.61 เป็นการสำคัญผิดในอัตลักษณ์ ส่วน ม.60 เป็นการพลาดทางกายภาพ", penalty:"ตามฐานความผิด" },
       { id:"s62", label:"ม.๖๒ สำคัญผิดในข้อเท็จจริง (Mistake of Fact)", type:"section", num:"62",
-        summary:"สำคัญผิดว่ามีข้อเท็จจริงที่ทำให้ไม่เป็นความผิด → ผู้กระทำไม่มีความผิด",
-        detail:"ข้อเท็จจริงใดถ้ามีอยู่จริงจะทำให้การกระทำไม่เป็นความผิด หรือทำให้ผู้กระทำไม่ต้องรับโทษ หรือได้รับโทษน้อยลง ถ้าผู้กระทำสำคัญผิดว่ามีอยู่จริง ผู้กระทำไม่มีความผิด หรือได้รับยกเว้นโทษ หรือได้รับโทษน้อยลง\n\nแต่ถ้าความสำคัญผิดเกิดจากความประมาท และกฎหมายกำหนดโทษสำหรับความประมาท ผู้กระทำต้องรับผิดฐานประมาท\n\nตัวอย่าง: เข้าใจว่าของเป็นของตัวเอง จึงเอาไป → ไม่ผิดฐานลักทรัพย์ (เพราะสำคัญผิดว่าเป็นของตน)", penalty:"—" },
+        summary:"สำคัญผิดว่ามีข้อเท็จจริงที่ทำให้ไม่เป็นความผิด → ผู้กระทำไม่มีความผิด (แม้ข้อเท็จจริงนั้นจะไม่มีอยู่จริง)",
+        detail:"ข้อเท็จจริงใด ถ้ามีอยู่จริงจะทำให้การกระทำไม่เป็นความผิด หรือทำให้ผู้กระทำไม่ต้องรับโทษ หรือได้รับโทษน้อยลง แม้ข้อเท็จจริงนั้นจะไม่มีอยู่จริง แต่ผู้กระทำสำคัญผิดว่ามีอยู่จริง ผู้กระทำย่อมไม่มีความผิด หรือได้รับยกเว้นโทษ หรือได้รับโทษน้อยลง แล้วแต่กรณี\n\nถ้าความไม่รู้ข้อเท็จจริงตามความในวรรคสามแห่งมาตรา ๕๙ หรือความสำคัญผิดว่ามีอยู่จริงตามวรรคแรก ได้เกิดขึ้นด้วยความประมาทของผู้กระทำความผิด ให้ผู้กระทำรับผิดฐานกระทำโดยประมาท ในกรณีที่กฎหมายบัญญัติไว้โดยเฉพาะว่า การกระทำนั้นผู้กระทำจะต้องรับโทษแม้กระทำโดยประมาท\n\nบุคคลจะต้องรับโทษหนักขึ้นโดยอาศัยข้อเท็จจริงใด บุคคลนั้นจะต้องได้รู้ข้อเท็จจริงนั้น\n\nตัวอย่าง: เข้าใจว่าของเป็นของตน จึงเอาไป → อาจไม่ผิดฐานลักทรัพย์ (สำคัญผิดในข้อเท็จจริง)", penalty:"—" },
       { id:"s63", label:"ม.๖๓ ผลที่ตามมาทำให้รับโทษหนักขึ้น", type:"section", num:"63",
-        summary:"ต้องรับโทษหนักขึ้นเมื่อคาดเห็นผลหรือควรจะคาดเห็น",
-        detail:"ถ้าผลของการกระทำความผิดใดทำให้ผู้กระทำต้องรับโทษหนักขึ้น ผู้กระทำจะต้องรับโทษหนักขึ้นก็ต่อเมื่อตนได้คาดเห็นผลนั้น หรือควรจะได้คาดเห็น\n\nตัวอย่าง: ทำร้ายร่างกาย (ม.295) → ผลคือตาย (ม.290) → รับโทษหนักขึ้นตาม ม.290 เพราะควรคาดเห็นได้ว่าการทำร้ายอาจทำให้ตาย", penalty:"ตามผลที่ตามมา" },
+        summary:"ผลที่ทำให้โทษหนักขึ้นต้องเป็นผลที่ตามธรรมดาย่อมเกิดขึ้นได้",
+        detail:"ถ้าผลของการกระทำความผิดใดทำให้ผู้กระทำต้องรับโทษหนักขึ้น ผลของการกระทำความผิดนั้นต้องเป็นผลที่ตามธรรมดาย่อมเกิดขึ้นได้\n\nข้อสังเกตในทางปฏิบัติ: ศาลจะพิจารณาว่าผลร้ายหนักขึ้นมีความสัมพันธ์สมควรกับการกระทำเดิมหรือไม่ (เช่น ทำร้ายแล้วตาย — มักถือว่าเป็นผลที่อาจเกิดตามธรรมดาได้เมื่อครบองค์ประกอบฐานนั้น)", penalty:"ตามผลที่ตามมา" },
       { id:"s65", label:"ม.๖๕ วิกลจริต/จิตบกพร่อง (Insanity Defense)", type:"section", num:"65",
         summary:"ไม่สามารถรู้ผิดชอบหรือบังคับตนเอง เพราะจิตบกพร่อง → ไม่ต้องรับโทษ",
         detail:"ผู้ใดกระทำความผิดในขณะไม่สามารถรู้ผิดชอบ หรือไม่สามารถบังคับตนเองได้ เพราะมีจิตบกพร่อง โรคจิต หรือจิตฟั่นเฟือน ผู้นั้นไม่ต้องรับโทษ\n\nแต่ถ้าผู้กระทำยังสามารถรู้ผิดชอบอยู่บ้าง หรือยังสามารถบังคับตนเองได้บ้าง ศาลจะลงโทษผู้กระทำน้อยเพียงใดก็ได้\n\nศาลอาจสั่งคุมตัวไว้ในสถานพยาบาลตาม ม.48", penalty:"ไม่ต้องรับโทษ" },
@@ -319,9 +320,20 @@ const INIT_NOTES = [
 // ========== REST OF APP COMPONENTS (same logic, using new data) ==========
 const TC = { part:"bg-amber-500/20 text-amber-400 border-amber-500/30", chapter:"bg-blue-500/20 text-blue-400 border-blue-500/30", division:"bg-teal-500/20 text-teal-400 border-teal-500/30", section:"bg-purple-500/20 text-purple-400 border-purple-500/30" };
 const SI = { unwatched:Circle, watching:PlayCircle, watched:CheckCircle };
-const SC = { unwatched:"text-zinc-500", watching:"text-amber-400", watched:"text-emerald-400" };
+const SC = { unwatched:"text-zinc-600 dark:text-zinc-500", watching:"text-amber-400", watched:"text-emerald-400" };
 const cntS = (n) => { let c=0; for(const x of n){ if(x.type==="section")c++; if(x.children)c+=cntS(x.children); } return c; };
-const rMd = t => t.replace(/^### (.+)$/gm,'<h3 style="font-size:15px;font-weight:700;color:#e4e4e7;margin:16px 0 6px">$1</h3>').replace(/^## (.+)$/gm,'<h2 style="font-size:17px;font-weight:700;color:#fbbf24;margin:20px 0 8px">$1</h2>').replace(/\*\*(.+?)\*\*/g,'<strong style="color:#e4e4e7">$1</strong>').replace(/^[•\-] (.+)$/gm,'<div style="padding-left:16px;position:relative;margin:3px 0"><span style="position:absolute;left:0;color:#d4a953">◆</span> $1</div>').replace(/\n/g,'<br/>');
+const rMd = (t, dark = true) => {
+  const h2c = dark ? "#fbbf24" : "#b45309";
+  const h3c = dark ? "#e4e4e7" : "#3f3f46";
+  const strong = dark ? "#e4e4e7" : "#27272a";
+  const bullet = dark ? "#d4a953" : "#a16207";
+  return t
+    .replace(/^### (.+)$/gm, `<h3 style="font-size:15px;font-weight:700;color:${h3c};margin:16px 0 6px">$1</h3>`)
+    .replace(/^## (.+)$/gm, `<h2 style="font-size:17px;font-weight:700;color:${h2c};margin:20px 0 8px">$1</h2>`)
+    .replace(/\*\*(.+?)\*\*/g, `<strong style="color:${strong}">$1</strong>`)
+    .replace(/^[•\-] (.+)$/gm, `<div style="padding-left:16px;position:relative;margin:3px 0"><span style="position:absolute;left:0;color:${bullet}">◆</span> $1</div>`)
+    .replace(/\n/g, "<br/>");
+};
 
 /** แปลง tag สตริง: ข้อความธรรมดา | URL เต็ม | รูปแบบ ชื่อที่แสดง|https://... */
 function parseVideoTag(raw) {
@@ -369,47 +381,183 @@ function VideoTagChip({ raw }) {
         target="_blank"
         rel="noopener noreferrer"
         onClick={(e) => e.stopPropagation()}
-        className={`${base} inline-flex items-center gap-1 bg-sky-500/15 text-sky-300 border-sky-500/30 hover:bg-sky-500/25 hover:border-sky-400/40 truncate`}
+        className={`${base} inline-flex items-center gap-1 bg-sky-500/15 text-sky-800 dark:text-sky-300 border-sky-500/40 dark:border-sky-500/30 hover:bg-sky-500/25 hover:border-sky-500/50 dark:hover:border-sky-400/40 truncate`}
       >
         <ExternalLink size={10} className="flex-shrink-0 opacity-90" aria-hidden />
         <span className="truncate">{p.label}</span>
       </a>
     );
-  return <span className={`${base} inline-block bg-zinc-800 text-zinc-400 border-zinc-700/50 truncate`}>{p.label}</span>;
+  return <span className={`${base} inline-block bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border-zinc-300 dark:border-zinc-700/50 truncate`}>{p.label}</span>;
 }
 
+/** หาโหนดใน tree จาก id */
+function findNodeById(nodes, id) {
+  for (const n of nodes) {
+    if (n.id === id) return n;
+    if (n.children?.length) {
+      const f = findNodeById(n.children, id);
+      if (f) return f;
+    }
+  }
+  return null;
+}
+/** เส้นทางจาก root ถึง id (array ของโหนด) */
+function findPathToNode(nodes, targetId, acc = []) {
+  for (const n of nodes) {
+    const chain = [...acc, n];
+    if (n.id === targetId) return chain;
+    if (n.children?.length) {
+      const found = findPathToNode(n.children, targetId, chain);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+/** หามาตราแรกที่ num ตรงกับ tag (เช่น ม.288) */
+function findSectionByNum(nodes, numStr) {
+  for (const n of nodes) {
+    if (n.type === "section" && String(n.num) === String(numStr)) return n;
+    if (n.children?.length) {
+      const f = findSectionByNum(n.children, numStr);
+      if (f) return f;
+    }
+  }
+  return null;
+}
+function findSectionForVideoTags(tags, sections) {
+  for (const t of tags) {
+    const s = String(t);
+    const m1 = s.match(/ม\.?\s*(\d+)/i);
+    if (m1) {
+      const node = findSectionByNum(sections, m1[1]);
+      if (node) return node;
+    }
+    const m2 = s.match(/^(\d{1,3})$/);
+    if (m2) {
+      const node = findSectionByNum(sections, m2[1]);
+      if (node) return node;
+    }
+  }
+  return null;
+}
+
+/** ดึงเลขมาตราจากข้อความค้นหา เช่น "59", "ม.59", "ม . 288" */
+function parseArticleNumFromSearchQuery(raw) {
+  const s = String(raw).trim();
+  const m1 = s.match(/ม\.?\s*(\d{1,3})\b/i);
+  if (m1) return String(parseInt(m1[1], 10));
+  if (/^\d{1,3}$/.test(s)) return String(parseInt(s, 10));
+  return null;
+}
+
+const FONT_STEPS = [90, 100, 110, 125];
+
+/** รหัสเข้าใช้งาน (แก้ไข/เพิ่ม/ลดข้อมูลในแอป) — เปลี่ยนได้ที่นี่หรือผ่าน VITE_APP_ACCESS_CODE */
+const APP_ACCESS_CODE = import.meta.env.VITE_APP_ACCESS_CODE ?? "111555";
+const ACCESS_SESSION_KEY = "thai_criminal_law_access_v1";
+
 export default function App(){
+  const [accessOk,setAccessOk]=useState(()=>{ try{ return sessionStorage.getItem(ACCESS_SESSION_KEY)==="1"; } catch { return false; } });
+  const [gatePw,setGatePw]=useState("");
+  const [gateErr,setGateErr]=useState(false);
   const [tab,setTab]=useState("mindmap");
+  const [mmTargetId,setMmTargetId]=useState(null);
+  const clearMmTarget=useCallback(()=>setMmTargetId(null),[]);
+  const [theme,setTheme]=useState(()=>{ try{ return localStorage.getItem("ui_theme")==="light"?"light":"dark"; } catch { return "dark"; } });
+  const [fontPct,setFontPct]=useState(()=>{ try{ const n=Number(localStorage.getItem("ui_font_pct")); return FONT_STEPS.includes(n)?n:100; } catch { return 100; } });
   const [vids,setVids]=useState(INIT_VIDEOS);
   const [nts,setNts]=useState(INIT_NOTES);
   const [nn,setNn]=useState({});
   const [ld,setLd]=useState(false);
-  useEffect(()=>{(async()=>{ const a=await store.get("v2");const b=await store.get("n2");const c=await store.get("nn2"); if(a)setVids(a);if(b)setNts(b);if(c)setNn(c);setLd(true);})();},[]);
+  const tryUnlock=useCallback(()=>{
+    if(String(gatePw).trim()===String(APP_ACCESS_CODE).trim()){
+      try{ sessionStorage.setItem(ACCESS_SESSION_KEY,"1"); } catch {}
+      setAccessOk(true);
+      setGateErr(false);
+      setGatePw("");
+    }else{
+      setGateErr(true);
+    }
+  },[gatePw]);
+  useLayoutEffect(()=>{
+    try{ localStorage.setItem("ui_theme",theme); } catch {}
+    document.documentElement.classList.toggle("dark",theme==="dark");
+  },[theme]);
+  useEffect(()=>{
+    try{ localStorage.setItem("ui_font_pct",String(fontPct)); } catch {}
+    document.documentElement.style.fontSize=`${fontPct}%`;
+  },[fontPct]);
+  useEffect(()=>{
+    if(!accessOk)return;
+    (async()=>{ const a=await store.get("v2");const b=await store.get("n2");const c=await store.get("nn2"); if(a)setVids(a);if(b)setNts(b);if(c)setNn(c);setLd(true);})();
+  },[accessOk]);
   useEffect(()=>{if(ld)store.set("v2",vids);},[vids,ld]);
   useEffect(()=>{if(ld)store.set("n2",nts);},[nts,ld]);
   useEffect(()=>{if(ld)store.set("nn2",nn);},[nn,ld]);
   const st={s:cntS(SECTIONS),v:vids.length,w:vids.filter(v=>v.status==="watched").length,n:nts.length};
   const tabs=[{id:"mindmap",icon:Map,l:"Mind Map"},{id:"youtube",icon:Youtube,l:"YouTube"},{id:"lectures",icon:FileText,l:"Lecture Notes"},{id:"search",icon:Search,l:"ค้นหา"}];
+  const stepFont=(d)=>{ const i=FONT_STEPS.indexOf(fontPct); const ni=Math.min(FONT_STEPS.length-1,Math.max(0,i+d)); setFontPct(FONT_STEPS[ni]); };
+  if(!accessOk){
+    return(
+<div className="min-h-screen bg-zinc-100 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-200 flex items-center justify-center p-4 transition-colors" style={{fontFamily:"'Sarabun','Noto Sans Thai',sans-serif"}}>
+<div className="w-full max-w-sm rounded-2xl border border-zinc-200 dark:border-zinc-800/80 bg-white dark:bg-zinc-900/90 shadow-xl p-6 space-y-4">
+<div className="flex justify-center"><div className="w-14 h-14 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center"><Lock className="w-7 h-7 text-amber-600 dark:text-amber-400" aria-hidden /></div></div>
+<h2 className="text-center text-lg font-bold text-zinc-900 dark:text-zinc-100">รหัสเข้าใช้งาน</h2>
+<p className="text-center text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">กรอกรหัสเพื่อเข้าเว็บและแก้ไข เพิ่ม หรือลบข้อมูล (วิดีโอ สรุป บันทึก)<br/><span className="text-xs text-zinc-500 dark:text-zinc-500">ปิดแท็บแล้วต้องใส่รหัสใหม่</span></p>
+<input type="password" value={gatePw} onChange={(e)=>{ setGatePw(e.target.value); setGateErr(false); }} onKeyDown={(e)=>{ if(e.key==="Enter")tryUnlock(); }} placeholder="รหัสผ่าน" autoComplete="current-password" className="w-full rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/60 px-4 py-3 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 outline-none focus:border-amber-500/60 focus:ring-1 focus:ring-amber-500/30" aria-invalid={gateErr} aria-describedby={gateErr?"gate-err":undefined} />
+{gateErr&&<p id="gate-err" className="text-sm text-red-600 dark:text-red-400 text-center">รหัสไม่ถูกต้อง</p>}
+<button type="button" onClick={tryUnlock} className="w-full py-3 rounded-xl text-sm font-semibold bg-amber-500/90 hover:bg-amber-500 text-zinc-900 border border-amber-600/30 transition-colors">เข้าใช้งาน</button>
+</div>
+</div>);
+  }
   return(
-<div className="min-h-screen bg-zinc-950 text-zinc-200" style={{fontFamily:"'Sarabun','Noto Sans Thai',sans-serif"}}>
-<header className="border-b border-zinc-800/60 bg-zinc-950/80 backdrop-blur-xl sticky top-0 z-50">
-<div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-<div className="flex items-center gap-3"><div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/20 flex items-center justify-center text-lg">⚖️</div><div><h1 className="text-base font-bold text-zinc-100 leading-tight">เรียนกฎหมายอาญา</h1><p className="text-[11px] text-zinc-500">ประมวลกฎหมายอาญา พ.ศ. ๒๔๙๙ (แก้ไขถึง พ.ศ. ๒๕๖๔)</p></div></div>
-<div className="flex items-center gap-1.5 text-xs text-zinc-500"><span className="px-2 py-1 bg-zinc-800/50 rounded-lg">{st.s} มาตรา</span><span className="px-2 py-1 bg-zinc-800/50 rounded-lg">{st.v} วิดีโอ</span><span className="px-2 py-1 bg-zinc-800/50 rounded-lg">{st.n} สรุป</span></div></div>
-<div className="max-w-7xl mx-auto px-4 flex gap-0">{tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} className={`px-4 py-2.5 flex items-center gap-2 text-sm font-medium border-b-2 transition-all ${tab===t.id?"border-amber-500 text-amber-400":"border-transparent text-zinc-500 hover:text-zinc-300"}`}><t.icon size={16}/>{t.l}</button>)}</div>
+<div className="min-h-screen bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-200 transition-colors" style={{fontFamily:"'Sarabun','Noto Sans Thai',sans-serif"}}>
+<header className="border-b border-zinc-200 dark:border-zinc-800/60 bg-white/90 dark:bg-zinc-950/80 backdrop-blur-xl sticky top-0 z-50">
+<div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+<div className="flex items-center gap-3 min-w-0"><div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/20 flex items-center justify-center text-lg shrink-0">⚖️</div><div className="min-w-0"><h1 className="text-base font-bold text-zinc-900 dark:text-zinc-100 leading-tight">เรียนกฎหมายอาญา</h1><p className="text-[11px] text-zinc-600 dark:text-zinc-500">ประมวลกฎหมายอาญา พ.ศ. ๒๔๙๙ (แก้ไขถึง พ.ศ. ๒๕๖๔)</p></div></div>
+<div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-end">
+<div className="flex items-center rounded-xl border border-zinc-200 dark:border-zinc-700/50 bg-zinc-100/80 dark:bg-zinc-800/40 p-0.5" title="ขนาดตัวอักษร">
+<button type="button" onClick={()=>stepFont(-1)} disabled={fontPct<=FONT_STEPS[0]} className="p-1.5 rounded-lg text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700/60 disabled:opacity-30" aria-label="ลดขนาดตัวอักษร"><Minus size={16}/></button>
+<span className="text-[11px] tabular-nums w-9 text-center text-zinc-600 dark:text-zinc-400">{fontPct}%</span>
+<button type="button" onClick={()=>stepFont(1)} disabled={fontPct>=FONT_STEPS[FONT_STEPS.length-1]} className="p-1.5 rounded-lg text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700/60 disabled:opacity-30" aria-label="เพิ่มขนาดตัวอักษร"><Plus size={16}/></button>
+</div>
+<button type="button" onClick={()=>setTheme((x)=>x==="dark"?"light":"dark")} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border border-zinc-200 dark:border-zinc-700/50 bg-zinc-100/80 dark:bg-zinc-800/40 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700/50" title={theme==="dark"?"โหมดสว่าง":"โหมดมืด"}>
+{theme==="dark"?<Sun size={16} className="text-amber-400"/>:<Moon size={16} className="text-violet-600"/>}
+<span className="hidden sm:inline">{theme==="dark"?"สว่าง":"มืด"}</span>
+</button>
+<div className="flex items-center gap-1.5 text-xs text-zinc-600 dark:text-zinc-500 flex-wrap">
+<a href={CRIMINAL_LAW_PDF} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/25 hover:bg-rose-500/25 transition-colors" title="ประมวลกฎหมายอาญา ฉบับกฤษฎีกา (PDF)">
+<FileText size={12} className="opacity-90 shrink-0" aria-hidden />
+<span>PDF ฉบับเต็ม</span>
+<ExternalLink size={11} className="opacity-70 shrink-0" aria-hidden />
+</a>
+<span className="px-2 py-1 bg-zinc-200/90 dark:bg-zinc-800/50 rounded-lg">{st.s} มาตรา</span><span className="px-2 py-1 bg-zinc-200/90 dark:bg-zinc-800/50 rounded-lg">{st.v} วิดีโอ</span><span className="px-2 py-1 bg-zinc-200/90 dark:bg-zinc-800/50 rounded-lg">{st.n} สรุป</span></div></div></div>
+<div className="max-w-7xl mx-auto px-4 flex gap-0 overflow-x-auto">{tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} className={`px-4 py-2.5 flex items-center gap-2 text-sm font-medium border-b-2 transition-all shrink-0 ${tab===t.id?"border-amber-500 text-amber-700 dark:text-amber-400":"border-transparent text-zinc-600 hover:text-zinc-900 dark:text-zinc-500 dark:hover:text-zinc-300"}`}><t.icon size={16}/>{t.l}</button>)}</div>
 </header>
 <main className="max-w-7xl mx-auto px-4 py-6">
-{tab==="mindmap"&&<MindMapV sections={SECTIONS} nn={nn} setNn={setNn} vids={vids} nts={nts}/>}
+{tab==="mindmap"&&<MindMapV sections={SECTIONS} nn={nn} setNn={setNn} vids={vids} nts={nts} focusNodeId={mmTargetId} onFocusApplied={clearMmTarget}/>}
 {tab==="youtube"&&<YTV vids={vids} setVids={setVids}/>}
-{tab==="lectures"&&<LV nts={nts} setNts={setNts} sections={SECTIONS}/>}
-{tab==="search"&&<SV sections={SECTIONS} vids={vids} nts={nts}/>}
+{tab==="lectures"&&<LV nts={nts} setNts={setNts} sections={SECTIONS} isDark={theme==="dark"}/>}
+{tab==="search"&&<SV sections={SECTIONS} vids={vids} nts={nts} onOpenMindMap={(id)=>{setMmTargetId(id);setTab("mindmap");}}/>}
 </main></div>);
 }
 
-function MindMapV({sections,nn,setNn,vids,nts}){
+function MindMapV({sections,nn,setNn,vids,nts,focusNodeId,onFocusApplied}){
   const [sel,setSel]=useState(null);
   const [exp,setExp]=useState(new Set(["p1","p2","p3"]));
   const [nt,setNt]=useState("");
+  useEffect(()=>{
+    if(!focusNodeId)return;
+    const node=findNodeById(sections,focusNodeId);
+    if(node){
+      setSel(node);
+      const path=findPathToNode(sections,focusNodeId);
+      if(path&&path.length>1){
+        setExp((e)=>{const n=new Set(e);for(const x of path.slice(0,-1))n.add(x.id);return n;});
+      }
+    }
+    onFocusApplied?.();
+  },[focusNodeId,sections,onFocusApplied]);
   const tog=id=>{const n=new Set(exp);n.has(id)?n.delete(id):n.add(id);setExp(n);};
   const addN=()=>{if(!nt.trim()||!sel)return;const k=sel.id;const ex=nn[k]||[];setNn({...nn,[k]:[...ex,{id:Date.now().toString(),text:nt,at:new Date().toISOString()}]});setNt("");};
   const delN=(sid,nid)=>{const ex=nn[sid]||[];setNn({...nn,[sid]:ex.filter(n=>n.id!==nid)});};
@@ -418,24 +566,38 @@ function MindMapV({sections,nn,setNn,vids,nts}){
   return(
 <div className="flex gap-6" style={{minHeight:"calc(100vh - 160px)"}}>
 <div className="flex-1 min-w-0">
-<div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold text-zinc-100 flex items-center gap-2"><Map size={20} className="text-amber-500"/>โครงสร้างประมวลกฎหมายอาญา</h2>
-<button onClick={()=>setExp(new Set(["p1","p2","p3"]))} className="text-xs text-zinc-500 hover:text-zinc-300 px-3 py-1.5 rounded-lg bg-zinc-800/50">ยุบทั้งหมด</button></div>
+<div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2"><Map size={20} className="text-amber-500"/>โครงสร้างประมวลกฎหมายอาญา</h2>
+<button onClick={()=>setExp(new Set(["p1","p2","p3"]))} className="text-xs text-zinc-500 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 px-3 py-1.5 rounded-lg bg-zinc-200/90 dark:bg-zinc-800/50">ยุบทั้งหมด</button></div>
 <div className="space-y-0.5">{sections.map(s=><TN key={s.id} n={s} d={0} ex={exp} tog={tog} sel={sel} setSel={setSel} nn={nn}/>)}</div></div>
 <div className="w-[400px] flex-shrink-0">{sel?(
-<div className="sticky top-36 bg-zinc-900/80 border border-zinc-800/60 rounded-2xl overflow-hidden max-h-[calc(100vh-170px)] overflow-y-auto">
-<div className="p-5 border-b border-zinc-800/40"><span className={`text-[11px] font-semibold px-2 py-0.5 rounded-md border ${TC[sel.type]}`}>{sel.type==="section"?`มาตรา ${sel.num}`:sel.type==="part"?"ภาค":sel.type==="chapter"?"ลักษณะ":"หมวด"}</span>
-<h3 className="text-base font-bold text-zinc-100 mt-2">{sel.label}</h3>
-{sel.summary&&<p className="text-sm text-zinc-400 mt-1.5 leading-relaxed">{sel.summary}</p>}
+<div className="sticky top-36 bg-white/95 dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-2xl overflow-hidden max-h-[calc(100vh-170px)] overflow-y-auto">
+<div className="p-5 border-b border-zinc-200 dark:border-zinc-800/40"><span className={`text-[11px] font-semibold px-2 py-0.5 rounded-md border ${TC[sel.type]}`}>{sel.type==="section"?`มาตรา ${sel.num}`:sel.type==="part"?"ภาค":sel.type==="chapter"?"ลักษณะ":"หมวด"}</span>
+<h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 mt-2">{sel.label}</h3>
+{sel.summary&&<p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1.5 leading-relaxed">{sel.summary}</p>}
 {sel.penalty&&sel.penalty!=="—"&&<div className="mt-3 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400 flex items-center gap-2">⚖️ {sel.penalty}</div>}
+{sel.type==="section"&&(()=>{const pg=pdfPageForArticle(sel.num);return(
+<div className="mt-3 flex flex-wrap gap-2">
+{pg!=null?(
+<a href={criminalLawPdfUrl(pg)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-sky-500/15 text-sky-800 dark:text-sky-300 border border-sky-500/30 text-xs font-medium hover:bg-sky-500/25 transition-colors">
+<ExternalLink size={14} className="shrink-0 opacity-90" aria-hidden />
+เปิด ม.{sel.num} ใน PDF (หน้า {pg})
+</a>
+):(
+<a href={CRIMINAL_LAW_PDF} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-zinc-200/90 dark:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300 border border-zinc-300 dark:border-zinc-600 text-xs font-medium hover:border-sky-500/40 transition-colors">
+<ExternalLink size={14} className="shrink-0 opacity-90" aria-hidden />
+เปิดฉบับ PDF — ใช้ค้นหาในไฟล์ว่า ม.{sel.num}
+</a>
+)}</div>
+);})()}
 </div>
-{sel.detail&&<div className="p-5 border-b border-zinc-800/40"><h4 className="text-sm font-semibold text-blue-400 mb-2 flex items-center gap-2"><BookOpen size={14}/>คำอธิบาย</h4><div className="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">{sel.detail}</div></div>}
-<div className="p-5 border-b border-zinc-800/40"><h4 className="text-sm font-semibold text-amber-400 mb-3 flex items-center gap-2"><MessageSquare size={14}/>บันทึกส่วนตัว ({(nn[sel.id]||[]).length})</h4>
-<div className="space-y-2 max-h-40 overflow-y-auto mb-3">{(nn[sel.id]||[]).map(n=><div key={n.id} className="bg-zinc-800/50 rounded-lg p-3 text-sm text-zinc-300 group relative">{n.text}<button onClick={()=>delN(sel.id,n.id)} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-red-400"><X size={14}/></button></div>)}</div>
-<div className="flex gap-2"><input value={nt} onChange={e=>setNt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addN()} placeholder="พิมพ์บันทึก..." className="flex-1 bg-zinc-800/60 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 outline-none focus:border-amber-500/50"/><button onClick={addN} className="px-3 py-2 bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30"><Plus size={16}/></button></div></div>
-{rv.length>0&&<div className="p-5 border-b border-zinc-800/40"><h4 className="text-sm font-semibold text-red-400 mb-3 flex items-center gap-2"><Youtube size={14}/>วิดีโอที่เกี่ยวข้อง ({rv.length})</h4><div className="space-y-2">{rv.slice(0,3).map(v=><div key={v.id} className="flex items-center gap-2 p-2 rounded-lg bg-zinc-800/30 text-sm"><PlayCircle size={14} className="text-red-400 flex-shrink-0"/><span className="text-zinc-300 truncate">{v.title}</span></div>)}</div></div>}
-{rn.length>0&&<div className="p-5"><h4 className="text-sm font-semibold text-blue-400 mb-3 flex items-center gap-2"><FileText size={14}/>สรุป Lecture ({rn.length})</h4>{rn.map(n=><div key={n.id} className="p-2 rounded-lg bg-zinc-800/30 text-sm text-zinc-300">{n.title}</div>)}</div>}
+{sel.detail&&<div className="p-5 border-b border-zinc-200 dark:border-zinc-800/40"><h4 className="text-sm font-semibold text-blue-400 mb-2 flex items-center gap-2"><BookOpen size={14}/>คำอธิบาย</h4><div className="text-sm text-zinc-400 dark:text-zinc-300 leading-relaxed whitespace-pre-wrap">{sel.detail}</div></div>}
+<div className="p-5 border-b border-zinc-200 dark:border-zinc-800/40"><h4 className="text-sm font-semibold text-amber-400 mb-3 flex items-center gap-2"><MessageSquare size={14}/>บันทึกส่วนตัว ({(nn[sel.id]||[]).length})</h4>
+<div className="space-y-2 max-h-40 overflow-y-auto mb-3">{(nn[sel.id]||[]).map(n=><div key={n.id} className="bg-zinc-200/90 dark:bg-zinc-800/50 rounded-lg p-3 text-sm text-zinc-400 dark:text-zinc-300 group relative">{n.text}<button onClick={()=>delN(sel.id,n.id)} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-zinc-500 dark:text-zinc-500 hover:text-red-400"><X size={14}/></button></div>)}</div>
+<div className="flex gap-2"><input value={nt} onChange={e=>setNt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addN()} placeholder="พิมพ์บันทึก..." className="flex-1 bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none focus:border-amber-500/50"/><button onClick={addN} className="px-3 py-2 bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30"><Plus size={16}/></button></div></div>
+{rv.length>0&&<div className="p-5 border-b border-zinc-200 dark:border-zinc-800/40"><h4 className="text-sm font-semibold text-red-400 mb-3 flex items-center gap-2"><Youtube size={14}/>วิดีโอที่เกี่ยวข้อง ({rv.length})</h4><div className="space-y-2">{rv.slice(0,3).map(v=><div key={v.id} className="flex items-center gap-2 p-2 rounded-lg bg-zinc-200/70 dark:bg-zinc-800/30 text-sm"><PlayCircle size={14} className="text-red-400 flex-shrink-0"/><span className="text-zinc-400 dark:text-zinc-300 truncate">{v.title}</span></div>)}</div></div>}
+{rn.length>0&&<div className="p-5"><h4 className="text-sm font-semibold text-blue-400 mb-3 flex items-center gap-2"><FileText size={14}/>สรุป Lecture ({rn.length})</h4>{rn.map(n=><div key={n.id} className="p-2 rounded-lg bg-zinc-200/70 dark:bg-zinc-800/30 text-sm text-zinc-400 dark:text-zinc-300">{n.title}</div>)}</div>}
 </div>):(
-<div className="sticky top-36 bg-zinc-900/40 border border-zinc-800/30 rounded-2xl p-8 text-center"><Map size={40} className="text-zinc-700 mx-auto mb-3"/><p className="text-sm text-zinc-500">เลือกมาตรา/หมวด/ลักษณะ<br/>จากแผนผังด้านซ้าย<br/>เพื่อดูรายละเอียดและเพิ่มบันทึก</p></div>
+<div className="sticky top-36 bg-zinc-200/65 dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800/30 rounded-2xl p-8 text-center"><Map size={40} className="text-zinc-400 dark:text-zinc-700 mx-auto mb-3"/><p className="text-sm text-zinc-500 dark:text-zinc-500">เลือกมาตรา/หมวด/ลักษณะ<br/>จากแผนผังด้านซ้าย<br/>เพื่อดูรายละเอียดและเพิ่มบันทึก</p></div>
 )}</div></div>);
 }
 
@@ -443,9 +605,9 @@ function TN({n,d,ex,tog,sel,setSel,nn}){
   const hc=n.children&&n.children.length>0;const ie=ex.has(n.id);const is=sel?.id===n.id;const nc=(nn[n.id]||[]).length;
   const cl={part:"border-l-amber-500",chapter:"border-l-blue-500",division:"border-l-teal-500",section:"border-l-purple-400"};
   const dc={part:"bg-amber-500",chapter:"bg-blue-500",division:"bg-teal-500",section:"bg-purple-400"};
-  return(<div><div onClick={()=>{setSel(n);if(hc)tog(n.id);}} style={{paddingLeft:d*20+12}} className={`flex items-center gap-2 py-2 px-3 rounded-xl cursor-pointer transition-all group border-l-2 ${cl[n.type]} ${is?"bg-zinc-800/80 border-l-amber-400":"bg-transparent hover:bg-zinc-800/40"}`}>
-  {hc?(ie?<ChevronDown size={14} className="text-zinc-500 flex-shrink-0"/>:<ChevronRight size={14} className="text-zinc-500 flex-shrink-0"/>):<div className={`w-2 h-2 rounded-full ${dc[n.type]} flex-shrink-0 ml-0.5 mr-0.5`}/>}
-  <span className={`text-sm truncate ${is?"text-amber-300 font-semibold":n.type==="section"?"text-zinc-300":"text-zinc-400 font-medium"}`}>{n.label}</span>
+  return(<div><div onClick={()=>{setSel(n);if(hc)tog(n.id);}} style={{paddingLeft:d*20+12}} className={`flex items-center gap-2 py-2 px-3 rounded-xl cursor-pointer transition-all group border-l-2 ${cl[n.type]} ${is?"bg-zinc-200/90 dark:bg-zinc-800/80 border-l-amber-400":"bg-transparent hover:bg-zinc-200/80 dark:bg-zinc-800/40"}`}>
+  {hc?(ie?<ChevronDown size={14} className="text-zinc-500 dark:text-zinc-500 flex-shrink-0"/>:<ChevronRight size={14} className="text-zinc-500 dark:text-zinc-500 flex-shrink-0"/>):<div className={`w-2 h-2 rounded-full ${dc[n.type]} flex-shrink-0 ml-0.5 mr-0.5`}/>}
+  <span className={`text-sm truncate ${is?"text-amber-800 dark:text-amber-300 font-semibold":n.type==="section"?"text-zinc-700 dark:text-zinc-300":"text-zinc-600 dark:text-zinc-400 font-medium"}`}>{n.label}</span>
   {nc>0&&<span className="ml-auto text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-md flex-shrink-0">{nc}</span>}
   </div>{hc&&ie&&<div>{n.children.map(c=><TN key={c.id} n={c} d={d+1} ex={ex} tog={tog} sel={sel} setSel={setSel} nn={nn}/>)}</div>}</div>);
 }
@@ -464,79 +626,116 @@ function YTV({vids,setVids}){
   const dv=id=>setVids(vids.filter(v=>v.id!==id));
   const av=v=>{setVids([v,...vids]);setSa(false);};
   return(<div>
-<div className="flex items-center justify-between mb-5"><h2 className="text-lg font-bold text-zinc-100 flex items-center gap-2"><Youtube size={20} className="text-red-500"/>YouTube Database</h2><button onClick={()=>setSa(true)} className="flex items-center gap-2 px-4 py-2 bg-red-500/20 text-red-400 rounded-xl text-sm font-medium hover:bg-red-500/30 border border-red-500/20"><Plus size={16}/>เพิ่มวิดีโอ</button></div>
+<div className="flex items-center justify-between mb-5"><h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2"><Youtube size={20} className="text-red-500"/>YouTube Database</h2><button onClick={()=>setSa(true)} className="flex items-center gap-2 px-4 py-2 bg-red-500/20 text-red-400 rounded-xl text-sm font-medium hover:bg-red-500/30 border border-red-500/20"><Plus size={16}/>เพิ่มวิดีโอ</button></div>
 {sa&&<AVF onAdd={av} onCancel={()=>setSa(false)}/>}
-<div className="flex flex-wrap gap-3 mb-5"><div className="flex-1 min-w-[200px] relative"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="ค้นหาวิดีโอ..." className="w-full bg-zinc-900/60 border border-zinc-800/60 rounded-xl pl-10 pr-4 py-2.5 text-sm text-zinc-200 placeholder-zinc-500 outline-none focus:border-amber-500/50"/></div>
-<select value={ft} onChange={e=>setFt(e.target.value)} className="bg-zinc-900/60 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-zinc-300 outline-none"><option value="">ทุก Tag</option>{at.map(t=><option key={t} value={t}>{tagDisplayLabel(t)}</option>)}</select>
-<select value={fs} onChange={e=>setFs(e.target.value)} className="bg-zinc-900/60 border border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-zinc-300 outline-none"><option value="">ทุกสถานะ</option><option value="unwatched">ยังไม่ดู</option><option value="watching">กำลังดู</option><option value="watched">ดูแล้ว</option></select></div>
+<div className="flex flex-wrap gap-3 mb-5"><div className="flex-1 min-w-[200px] relative"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 dark:text-zinc-500"/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="ค้นหาวิดีโอ..." className="w-full bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 rounded-xl pl-10 pr-4 py-2.5 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none focus:border-amber-500/50"/></div>
+<select value={ft} onChange={e=>setFt(e.target.value)} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-zinc-400 dark:text-zinc-300 outline-none"><option value="">ทุก Tag</option>{at.map(t=><option key={t} value={t}>{tagDisplayLabel(t)}</option>)}</select>
+<select value={fs} onChange={e=>setFs(e.target.value)} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-zinc-400 dark:text-zinc-300 outline-none"><option value="">ทุกสถานะ</option><option value="unwatched">ยังไม่ดู</option><option value="watching">กำลังดู</option><option value="watched">ดูแล้ว</option></select></div>
 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{fl.map(v=>{const I=SI[v.status];return(
-<div key={v.id} className="bg-zinc-900/60 border border-zinc-800/40 rounded-2xl overflow-hidden hover:border-zinc-700/60 transition-all group">
-<div className="relative"><div className="aspect-video bg-zinc-800 flex items-center justify-center"><img src={`https://img.youtube.com/vi/${v.youtubeId}/mqdefault.jpg`} alt="" className="w-full h-full object-cover opacity-80" onError={e=>{e.target.style.display="none";}}/><div className="absolute inset-0 flex items-center justify-center bg-black/30"><PlayCircle size={48} className="text-white/80"/></div></div><button onClick={()=>uv(v.id,{favorite:!v.favorite})} className="absolute top-3 right-3"><Star size={20} className={v.favorite?"text-amber-400 fill-amber-400":"text-white/40"}/></button></div>
-<div className="p-4"><h3 className="text-sm font-semibold text-zinc-200 leading-snug mb-1 line-clamp-2">{v.title}</h3><p className="text-xs text-zinc-500 mb-3">{v.channel}</p>
+<div key={v.id} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/40 rounded-2xl overflow-hidden hover:border-zinc-300 dark:border-zinc-700/60 transition-all group">
+<div className="relative"><div className="aspect-video bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center"><img src={`https://img.youtube.com/vi/${v.youtubeId}/mqdefault.jpg`} alt="" className="w-full h-full object-cover opacity-80" onError={e=>{e.target.style.display="none";}}/><div className="absolute inset-0 flex items-center justify-center bg-black/30"><PlayCircle size={48} className="text-white/80"/></div></div><button onClick={()=>uv(v.id,{favorite:!v.favorite})} className="absolute top-3 right-3"><Star size={20} className={v.favorite?"text-amber-400 fill-amber-400":"text-white/40"}/></button></div>
+<div className="p-4"><h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 leading-snug mb-1 line-clamp-2">{v.title}</h3><p className="text-xs text-zinc-500 dark:text-zinc-500 mb-3">{v.channel}</p>
 <div className="flex flex-wrap gap-1.5 mb-3">{v.tags.map((t,i)=><VideoTagChip key={`${v.id}-tag-${i}`} raw={t}/>)}</div>
 <div className="flex items-center justify-between"><button onClick={()=>{const nx=v.status==="unwatched"?"watching":v.status==="watching"?"watched":"unwatched";uv(v.id,{status:nx});}} className={`flex items-center gap-1.5 text-xs ${SC[v.status]}`}><I size={14}/>{v.status==="unwatched"?"ยังไม่ดู":v.status==="watching"?"กำลังดู":"ดูแล้ว"}</button>
-<div className="flex gap-1.5"><span className="text-xs text-amber-400">{"★".repeat(v.rating)}{"☆".repeat(5-v.rating)}</span><button onClick={()=>dv(v.id)} className="text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100"><Trash2 size={14}/></button></div></div></div></div>);})}</div>
-{fl.length===0&&<div className="text-center py-16"><Youtube size={40} className="text-zinc-700 mx-auto mb-3"/><p className="text-zinc-500 text-sm">ไม่พบวิดีโอ</p></div>}</div>);
+<div className="flex gap-1.5"><span className="text-xs text-amber-400">{"★".repeat(v.rating)}{"☆".repeat(5-v.rating)}</span><button onClick={()=>dv(v.id)} className="text-zinc-500 dark:text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100"><Trash2 size={14}/></button></div></div></div></div>);})}</div>
+{fl.length===0&&<div className="text-center py-16"><Youtube size={40} className="text-zinc-400 dark:text-zinc-700 mx-auto mb-3"/><p className="text-zinc-500 dark:text-zinc-500 text-sm">ไม่พบวิดีโอ</p></div>}</div>);
 }
 
 function AVF({onAdd,onCancel}){
   const [f,sF]=useState({youtubeId:"",title:"",channel:"",tags:"",rating:4});
-  return(<div className="bg-zinc-900/80 border border-zinc-800/60 rounded-2xl p-5 mb-5"><h3 className="text-sm font-bold text-zinc-200 mb-4">เพิ่มวิดีโอใหม่</h3>
-<div className="grid grid-cols-2 gap-3 mb-3"><input value={f.youtubeId} onChange={e=>sF({...f,youtubeId:e.target.value})} placeholder="YouTube Video ID" className="bg-zinc-800/60 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 outline-none"/><input value={f.channel} onChange={e=>sF({...f,channel:e.target.value})} placeholder="Channel" className="bg-zinc-800/60 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 outline-none"/></div>
-<input value={f.title} onChange={e=>sF({...f,title:e.target.value})} placeholder="ชื่อวิดีโอ *" className="w-full bg-zinc-800/60 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 outline-none mb-3"/>
-<input value={f.tags} onChange={e=>sF({...f,tags:e.target.value})} placeholder="Tags: ม.288, ฆ่า หรือ สรุป Doc|https://docs.google.com/... หรือวาง URL PDF โดยตรง" className="w-full bg-zinc-800/60 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 outline-none mb-3"/>
-<p className="text-[11px] text-zinc-500 mb-3 leading-relaxed">ลิงก์ Google Doc / Drive / PDF: วาง URL ทั้งบรรทัด หรือใช้รูปแบบ <span className="text-zinc-400">ชื่อที่แสดง|https://...</span> (คั่น tag หลายอันด้วย comma)</p>
-<div className="flex items-center gap-3 mb-4"><span className="text-xs text-zinc-500">คะแนน:</span>{[1,2,3,4,5].map(r=><button key={r} onClick={()=>sF({...f,rating:r})} className={`text-lg ${r<=f.rating?"text-amber-400":"text-zinc-600"}`}>★</button>)}</div>
-<div className="flex gap-2 justify-end"><button onClick={onCancel} className="px-4 py-2 text-sm text-zinc-400">ยกเลิก</button><button onClick={()=>{if(!f.title.trim())return;onAdd({id:"v"+Date.now(),youtubeId:f.youtubeId||"dQw4w9WgXcQ",title:f.title,channel:f.channel,tags:f.tags.split(",").map(t=>t.trim()).filter(Boolean),rating:f.rating,status:"unwatched",favorite:false});}} className="px-4 py-2 bg-red-500/20 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/30 border border-red-500/20">บันทึก</button></div></div>);
+  return(<div className="bg-white/95 dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-2xl p-5 mb-5"><h3 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 mb-4">เพิ่มวิดีโอใหม่</h3>
+<div className="grid grid-cols-2 gap-3 mb-3"><input value={f.youtubeId} onChange={e=>sF({...f,youtubeId:e.target.value})} placeholder="YouTube Video ID" className="bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none"/><input value={f.channel} onChange={e=>sF({...f,channel:e.target.value})} placeholder="Channel" className="bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none"/></div>
+<input value={f.title} onChange={e=>sF({...f,title:e.target.value})} placeholder="ชื่อวิดีโอ *" className="w-full bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none mb-3"/>
+<input value={f.tags} onChange={e=>sF({...f,tags:e.target.value})} placeholder="Tags: ม.288, ฆ่า หรือ สรุป Doc|https://docs.google.com/... หรือวาง URL PDF โดยตรง" className="w-full bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none mb-3"/>
+<p className="text-[11px] text-zinc-500 dark:text-zinc-500 mb-3 leading-relaxed">ลิงก์ Google Doc / Drive / PDF: วาง URL ทั้งบรรทัด หรือใช้รูปแบบ <span className="text-zinc-500 dark:text-zinc-400">ชื่อที่แสดง|https://...</span> (คั่น tag หลายอันด้วย comma)</p>
+<div className="flex items-center gap-3 mb-4"><span className="text-xs text-zinc-500 dark:text-zinc-500">คะแนน:</span>{[1,2,3,4,5].map(r=><button key={r} onClick={()=>sF({...f,rating:r})} className={`text-lg ${r<=f.rating?"text-amber-400":"text-zinc-500 dark:text-zinc-600"}`}>★</button>)}</div>
+<div className="flex gap-2 justify-end"><button onClick={onCancel} className="px-4 py-2 text-sm text-zinc-500 dark:text-zinc-400">ยกเลิก</button><button onClick={()=>{if(!f.title.trim())return;onAdd({id:"v"+Date.now(),youtubeId:f.youtubeId||"dQw4w9WgXcQ",title:f.title,channel:f.channel,tags:f.tags.split(",").map(t=>t.trim()).filter(Boolean),rating:f.rating,status:"unwatched",favorite:false});}} className="px-4 py-2 bg-red-500/20 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/30 border border-red-500/20">บันทึก</button></div></div>);
 }
 
-function LV({nts,setNts,sections}){
+function LV({nts,setNts,sections,isDark}){
   const [sel,setSel]=useState(null);const [sa,setSa]=useState(false);const [ed,setEd]=useState(null);const [fl,setFl]=useState("");
   const fd=nts.filter(n=>!fl||n.title.toLowerCase().includes(fl.toLowerCase())||n.content.toLowerCase().includes(fl.toLowerCase()));
   const gsl=(sid)=>{const f=(ns)=>{for(const n of ns){if(n.id===sid)return n.label;if(n.children){const r=f(n.children);if(r)return r;}}return null;};return f(sections)||"ไม่ระบุ";};
-  if(sel&&!ed)return(<div><button onClick={()=>setSel(null)} className="flex items-center gap-2 text-sm text-zinc-500 hover:text-zinc-300 mb-4"><ArrowLeft size={16}/>กลับ</button>
-<div className="bg-zinc-900/60 border border-zinc-800/40 rounded-2xl overflow-hidden"><div className="p-6 border-b border-zinc-800/40"><div className="flex items-center justify-between mb-3"><span className="text-xs text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-md">{sel.type==="summary"?"สรุป":sel.type==="comparison"?"เปรียบเทียบ":sel.type}</span><div className="flex gap-2"><button onClick={()=>setNts(nts.map(n=>n.id===sel.id?{...n,starred:!n.starred}:n))}><Star size={16} className={sel.starred?"text-amber-400 fill-amber-400":"text-zinc-600"}/></button><button onClick={()=>setEd(sel)} className="text-zinc-500 hover:text-blue-400"><Edit3 size={16}/></button><button onClick={()=>{setNts(nts.filter(n=>n.id!==sel.id));setSel(null);}} className="text-zinc-500 hover:text-red-400"><Trash2 size={16}/></button></div></div>
-<h2 className="text-xl font-bold text-zinc-100 mb-2">{sel.title}</h2><div className="flex items-center gap-4 text-xs text-zinc-500"><span className="flex items-center gap-1"><BookOpen size={12}/>{gsl(sel.sectionId)}</span>{sel.source&&<span className="flex items-center gap-1"><Tag size={12}/>{sel.source}</span>}<span className="flex items-center gap-1"><Clock size={12}/>{sel.updatedAt}</span></div></div>
-<div className="p-6"><div className="whitespace-pre-wrap text-sm text-zinc-300 leading-relaxed" dangerouslySetInnerHTML={{__html:rMd(sel.content)}}/></div></div></div>);
+  if(sel&&!ed)return(<div><button onClick={()=>setSel(null)} className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 mb-4"><ArrowLeft size={16}/>กลับ</button>
+<div className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/40 rounded-2xl overflow-hidden"><div className="p-6 border-b border-zinc-200 dark:border-zinc-800/40"><div className="flex items-center justify-between mb-3"><span className="text-xs text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-md">{sel.type==="summary"?"สรุป":sel.type==="comparison"?"เปรียบเทียบ":sel.type}</span><div className="flex gap-2"><button onClick={()=>setNts(nts.map(n=>n.id===sel.id?{...n,starred:!n.starred}:n))}><Star size={16} className={sel.starred?"text-amber-400 fill-amber-400":"text-zinc-500 dark:text-zinc-600"}/></button><button onClick={()=>setEd(sel)} className="text-zinc-500 dark:text-zinc-500 hover:text-blue-400"><Edit3 size={16}/></button><button onClick={()=>{setNts(nts.filter(n=>n.id!==sel.id));setSel(null);}} className="text-zinc-500 dark:text-zinc-500 hover:text-red-400"><Trash2 size={16}/></button></div></div>
+<h2 className="text-xl font-bold text-zinc-900 dark:text-zinc-100 mb-2">{sel.title}</h2><div className="flex items-center gap-4 text-xs text-zinc-500 dark:text-zinc-500"><span className="flex items-center gap-1"><BookOpen size={12}/>{gsl(sel.sectionId)}</span>{sel.source&&<span className="flex items-center gap-1"><Tag size={12}/>{sel.source}</span>}<span className="flex items-center gap-1"><Clock size={12}/>{sel.updatedAt}</span></div></div>
+<div className="p-6"><div className="whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed" dangerouslySetInnerHTML={{__html:rMd(sel.content,isDark)}}/></div></div></div>);
   if(ed)return(<NE note={ed} onSave={u=>{setNts(nts.map(n=>n.id===ed.id?{...n,...u,updatedAt:new Date().toISOString().split("T")[0]}:n));setEd(null);setSel({...ed,...u});}} onCancel={()=>setEd(null)} sections={sections}/>);
   return(<div>
-<div className="flex items-center justify-between mb-5"><h2 className="text-lg font-bold text-zinc-100 flex items-center gap-2"><FileText size={20} className="text-blue-500"/>Lecture Notes</h2><button onClick={()=>setSa(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 text-blue-400 rounded-xl text-sm font-medium hover:bg-blue-500/30 border border-blue-500/20"><Plus size={16}/>เพิ่มสรุป</button></div>
+<div className="flex items-center justify-between mb-5"><h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2"><FileText size={20} className="text-blue-500"/>Lecture Notes</h2><button onClick={()=>setSa(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 text-blue-400 rounded-xl text-sm font-medium hover:bg-blue-500/30 border border-blue-500/20"><Plus size={16}/>เพิ่มสรุป</button></div>
 {sa&&<NE note={null} onSave={n=>{setNts([{...n,id:"n"+Date.now(),updatedAt:new Date().toISOString().split("T")[0]},...nts]);setSa(false);}} onCancel={()=>setSa(false)} sections={sections}/>}
-<div className="relative mb-5"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"/><input value={fl} onChange={e=>setFl(e.target.value)} placeholder="ค้นหา lecture note..." className="w-full bg-zinc-900/60 border border-zinc-800/60 rounded-xl pl-10 pr-4 py-2.5 text-sm text-zinc-200 placeholder-zinc-500 outline-none focus:border-amber-500/50"/></div>
-<div className="space-y-3">{fd.sort((a,b)=>(b.starred?1:0)-(a.starred?1:0)).map(n=><div key={n.id} onClick={()=>setSel(n)} className="bg-zinc-900/60 border border-zinc-800/40 rounded-xl p-4 cursor-pointer hover:border-zinc-700/60 transition-all"><div className="flex items-start justify-between"><div className="flex-1 min-w-0"><div className="flex items-center gap-2 mb-1">{n.starred&&<Star size={14} className="text-amber-400 fill-amber-400 flex-shrink-0"/>}<h3 className="text-sm font-semibold text-zinc-200 truncate">{n.title}</h3></div><p className="text-xs text-zinc-500">{gsl(n.sectionId)} • {n.source||""} • {n.updatedAt}</p><p className="text-xs text-zinc-400 mt-1.5 line-clamp-2">{n.content.replace(/[#*]/g,"").substring(0,120)}...</p></div><span className="text-[11px] px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-400 border border-purple-500/20 flex-shrink-0 ml-3">{n.type==="summary"?"สรุป":n.type==="comparison"?"เปรียบเทียบ":n.type}</span></div></div>)}</div>
-{fd.length===0&&<div className="text-center py-16"><FileText size={40} className="text-zinc-700 mx-auto mb-3"/><p className="text-zinc-500 text-sm">ยังไม่มี Lecture Note</p></div>}</div>);
+<div className="relative mb-5"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 dark:text-zinc-500"/><input value={fl} onChange={e=>setFl(e.target.value)} placeholder="ค้นหา lecture note..." className="w-full bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 rounded-xl pl-10 pr-4 py-2.5 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none focus:border-amber-500/50"/></div>
+<div className="space-y-3">{fd.sort((a,b)=>(b.starred?1:0)-(a.starred?1:0)).map(n=><div key={n.id} onClick={()=>setSel(n)} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/40 rounded-xl p-4 cursor-pointer hover:border-zinc-400 dark:hover:border-zinc-700/60 transition-all"><div className="flex items-start justify-between"><div className="flex-1 min-w-0"><div className="flex items-center gap-2 mb-1">{n.starred&&<Star size={14} className="text-amber-400 fill-amber-400 flex-shrink-0"/>}<h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate">{n.title}</h3></div><p className="text-xs text-zinc-500 dark:text-zinc-500">{gsl(n.sectionId)} • {n.source||""} • {n.updatedAt}</p><p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1.5 line-clamp-2">{n.content.replace(/[#*]/g,"").substring(0,120)}...</p></div><span className="text-[11px] px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-400 border border-purple-500/20 flex-shrink-0 ml-3">{n.type==="summary"?"สรุป":n.type==="comparison"?"เปรียบเทียบ":n.type}</span></div></div>)}</div>
+{fd.length===0&&<div className="text-center py-16"><FileText size={40} className="text-zinc-400 dark:text-zinc-700 mx-auto mb-3"/><p className="text-zinc-500 dark:text-zinc-500 text-sm">ยังไม่มี Lecture Note</p></div>}</div>);
 }
 
 function NE({note,onSave,onCancel,sections}){
   const [f,sF]=useState({title:note?.title||"",content:note?.content||"",source:note?.source||"",sectionId:note?.sectionId||"",type:note?.type||"summary",starred:note?.starred||false});
   const as=[];const flat=(ns,d=0)=>{for(const n of ns){if(n.type==="section")as.push({id:n.id,l:"  ".repeat(d)+n.label});if(n.children)flat(n.children,d+1);}};flat(sections);
-  return(<div className="bg-zinc-900/80 border border-zinc-800/60 rounded-2xl p-5 mb-5"><h3 className="text-sm font-bold text-zinc-200 mb-4">{note?"แก้ไข":"เพิ่ม"} Lecture Note</h3>
-<input value={f.title} onChange={e=>sF({...f,title:e.target.value})} placeholder="หัวข้อ *" className="w-full bg-zinc-800/60 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 outline-none mb-3"/>
-<div className="grid grid-cols-3 gap-3 mb-3"><select value={f.sectionId} onChange={e=>sF({...f,sectionId:e.target.value})} className="bg-zinc-800/60 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-300 outline-none"><option value="">เลือกมาตรา</option>{as.map(s=><option key={s.id} value={s.id}>{s.l}</option>)}</select>
-<input value={f.source} onChange={e=>sF({...f,source:e.target.value})} placeholder="แหล่งที่มา" className="bg-zinc-800/60 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 outline-none"/>
-<select value={f.type} onChange={e=>sF({...f,type:e.target.value})} className="bg-zinc-800/60 border border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-300 outline-none"><option value="summary">สรุป</option><option value="case_law">คำพิพากษา</option><option value="comparison">เปรียบเทียบ</option><option value="formula">สูตร/หลักการ</option><option value="exam_prep">เตรียมสอบ</option></select></div>
-<textarea value={f.content} onChange={e=>sF({...f,content:e.target.value})} placeholder="เนื้อหา (Markdown: ## หัวข้อ, **ตัวหนา**, - รายการ)" rows={12} className="w-full bg-zinc-800/60 border border-zinc-700/50 rounded-lg px-3 py-2.5 text-sm text-zinc-200 placeholder-zinc-500 outline-none resize-y mb-3 font-mono leading-relaxed"/>
-<div className="flex items-center justify-between"><label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer"><input type="checkbox" checked={f.starred} onChange={e=>sF({...f,starred:e.target.checked})} className="accent-amber-500"/>ติดดาว</label>
-<div className="flex gap-2"><button onClick={onCancel} className="px-4 py-2 text-sm text-zinc-400">ยกเลิก</button><button onClick={()=>{if(!f.title.trim())return;onSave(f);}} className="px-4 py-2 bg-blue-500/20 text-blue-400 rounded-lg text-sm font-medium hover:bg-blue-500/30 border border-blue-500/20 flex items-center gap-2"><Save size={14}/>บันทึก</button></div></div></div>);
+  return(<div className="bg-white/95 dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-2xl p-5 mb-5"><h3 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 mb-4">{note?"แก้ไข":"เพิ่ม"} Lecture Note</h3>
+<input value={f.title} onChange={e=>sF({...f,title:e.target.value})} placeholder="หัวข้อ *" className="w-full bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none mb-3"/>
+<div className="grid grid-cols-3 gap-3 mb-3"><select value={f.sectionId} onChange={e=>sF({...f,sectionId:e.target.value})} className="bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-400 dark:text-zinc-300 outline-none"><option value="">เลือกมาตรา</option>{as.map(s=><option key={s.id} value={s.id}>{s.l}</option>)}</select>
+<input value={f.source} onChange={e=>sF({...f,source:e.target.value})} placeholder="แหล่งที่มา" className="bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none"/>
+<select value={f.type} onChange={e=>sF({...f,type:e.target.value})} className="bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-400 dark:text-zinc-300 outline-none"><option value="summary">สรุป</option><option value="case_law">คำพิพากษา</option><option value="comparison">เปรียบเทียบ</option><option value="formula">สูตร/หลักการ</option><option value="exam_prep">เตรียมสอบ</option></select></div>
+<textarea value={f.content} onChange={e=>sF({...f,content:e.target.value})} placeholder="เนื้อหา (Markdown: ## หัวข้อ, **ตัวหนา**, - รายการ)" rows={12} className="w-full bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2.5 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none resize-y mb-3 font-mono leading-relaxed"/>
+<div className="flex items-center justify-between"><label className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400 cursor-pointer"><input type="checkbox" checked={f.starred} onChange={e=>sF({...f,starred:e.target.checked})} className="accent-amber-500"/>ติดดาว</label>
+<div className="flex gap-2"><button onClick={onCancel} className="px-4 py-2 text-sm text-zinc-500 dark:text-zinc-400">ยกเลิก</button><button onClick={()=>{if(!f.title.trim())return;onSave(f);}} className="px-4 py-2 bg-blue-500/20 text-blue-400 rounded-lg text-sm font-medium hover:bg-blue-500/30 border border-blue-500/20 flex items-center gap-2"><Save size={14}/>บันทึก</button></div></div></div>);
 }
 
-function SV({sections,vids,nts}){
+function SV({sections,vids,nts,onOpenMindMap}){
   const [q,setQ]=useState("");const ql=q.toLowerCase();
   const sr=[];const ss=(ns)=>{for(const n of ns){if(ql&&(n.label.toLowerCase().includes(ql)||n.summary?.toLowerCase().includes(ql)||n.detail?.toLowerCase().includes(ql)||n.num?.includes(ql)))sr.push(n);if(n.children)ss(n.children);}};if(ql)ss(sections);
   const vr=ql?vids.filter(v=>v.title.toLowerCase().includes(ql)||v.tags.some(t=>tagMatchesQuery(t,ql))):[];
   const nr=ql?nts.filter(n=>n.title.toLowerCase().includes(ql)||n.content.toLowerCase().includes(ql)):[];
   const tot=sr.length+vr.length+nr.length;
+  const qArticle = ql ? parseArticleNumFromSearchQuery(q) : null;
+  const qPdfPage = qArticle != null ? pdfPageForArticle(qArticle) : null;
+  const mmHint=(sub)=>(
+    <div className="mt-3 pt-2 border-t border-zinc-200 dark:border-zinc-800/50 flex items-center justify-end gap-1 text-[11px] text-amber-500/90">
+      <Map size={12} className="opacity-80"/>{sub}
+      <ChevronRight size={12} className="opacity-60"/>
+    </div>
+  );
   return(<div>
-<h2 className="text-lg font-bold text-zinc-100 flex items-center gap-2 mb-5"><Search size={20} className="text-amber-500"/>ค้นหาทั้งระบบ</h2>
-<div className="relative mb-6"><Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500"/><input value={q} onChange={e=>setQ(e.target.value)} placeholder='ค้นหา เช่น "288" "ฆ่า" "เจตนา" "ป้องกัน" "หมิ่นประมาท"' autoFocus className="w-full bg-zinc-900/60 border border-zinc-800/60 rounded-2xl pl-12 pr-4 py-3.5 text-base text-zinc-200 placeholder-zinc-500 outline-none focus:border-amber-500/50"/></div>
-{ql&&<p className="text-sm text-zinc-500 mb-4">พบ {tot} ผลลัพธ์สำหรับ "{q}"</p>}
-{sr.length>0&&<div className="mb-6"><h3 className="text-sm font-semibold text-purple-400 mb-3 flex items-center gap-2"><BookOpen size={14}/>มาตรา ({sr.length})</h3><div className="space-y-2">{sr.map(s=><div key={s.id} className="bg-zinc-900/60 border border-zinc-800/40 rounded-xl p-4 hover:border-zinc-700/60">
-<div className="flex items-center gap-2 mb-1"><span className={`text-[11px] font-semibold px-2 py-0.5 rounded-md border ${TC[s.type]}`}>{s.num?`ม.${s.num}`:s.type}</span><span className="text-sm font-semibold text-zinc-200">{s.label}</span></div>
-{s.summary&&<p className="text-xs text-zinc-400">{s.summary}</p>}
-{s.penalty&&s.penalty!=="—"&&<p className="text-xs text-red-400 mt-1">⚖️ {s.penalty}</p>}</div>)}</div></div>}
-{vr.length>0&&<div className="mb-6"><h3 className="text-sm font-semibold text-red-400 mb-3 flex items-center gap-2"><Youtube size={14}/>วิดีโอ ({vr.length})</h3><div className="space-y-2">{vr.map(v=><div key={v.id} className="bg-zinc-900/60 border border-zinc-800/40 rounded-xl p-4 flex items-center gap-3"><PlayCircle size={20} className="text-red-400 flex-shrink-0"/><div className="flex-1 min-w-0"><p className="text-sm font-semibold text-zinc-200 truncate">{v.title}</p><p className="text-xs text-zinc-500">{v.channel} • {v.tags.map(tagDisplayLabel).join(", ")}</p></div></div>)}</div></div>}
-{nr.length>0&&<div className="mb-6"><h3 className="text-sm font-semibold text-blue-400 mb-3 flex items-center gap-2"><FileText size={14}/>Lecture Notes ({nr.length})</h3><div className="space-y-2">{nr.map(n=><div key={n.id} className="bg-zinc-900/60 border border-zinc-800/40 rounded-xl p-4"><p className="text-sm font-semibold text-zinc-200">{n.title}</p><p className="text-xs text-zinc-400 mt-1">{n.content.replace(/[#*]/g,"").substring(0,100)}...</p></div>)}</div></div>}
-{ql&&tot===0&&<div className="text-center py-16"><Search size={40} className="text-zinc-700 mx-auto mb-3"/><p className="text-zinc-500 text-sm">ไม่พบผลลัพธ์สำหรับ "{q}"</p></div>}
-{!ql&&<div className="text-center py-16"><Sparkles size={40} className="text-zinc-700 mx-auto mb-3"/><p className="text-zinc-500 text-sm">พิมพ์คำค้นเพื่อค้นหามาตรา วิดีโอ และ lecture notes</p><div className="flex flex-wrap justify-center gap-2 mt-4">{["288","ฆ่า","เจตนา","ป้องกัน","ลักทรัพย์","หมิ่นประมาท","อายุความ","ทุจริต","ฉ้อโกง","ประมาท"].map(k=><button key={k} onClick={()=>setQ(k)} className="px-3 py-1.5 text-xs bg-zinc-800/50 text-zinc-400 rounded-lg border border-zinc-700/40 hover:border-amber-500/30 hover:text-amber-400">{k}</button>)}</div></div>}
+<h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2 mb-5"><Search size={20} className="text-amber-500"/>ค้นหาทั้งระบบ</h2>
+<div className="relative mb-6"><Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 dark:text-zinc-500"/><input value={q} onChange={e=>setQ(e.target.value)} placeholder='ค้นหา เช่น "288" "ฆ่า" "เจตนา" "ป้องกัน" "หมิ่นประมาท"' autoFocus className="w-full bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 rounded-2xl pl-12 pr-4 py-3.5 text-base text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none focus:border-amber-500/50"/></div>
+{ql && qArticle && (
+<div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-sky-500/30 bg-sky-500/10 dark:bg-sky-500/10 px-4 py-3 text-sm">
+<span className="text-zinc-700 dark:text-zinc-300">มาตรา {qArticle} ในไฟล์ PDF (กฤษฎีกา):</span>
+{qPdfPage != null ? (
+<a href={criminalLawPdfUrl(qPdfPage)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 font-medium text-sky-700 dark:text-sky-300 hover:underline">
+<ExternalLink size={14} aria-hidden />
+เปิดหน้า {qPdfPage} (#page={qPdfPage})
+</a>
+) : (
+<a href={CRIMINAL_LAW_PDF} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 font-medium text-sky-700 dark:text-sky-300 hover:underline">
+<ExternalLink size={14} aria-hidden />
+เปิด PDF แล้วใช้ Ctrl+F ค้น ม.{qArticle}
+</a>
+)}
+</div>
+)}
+{ql&&<p className="text-sm text-zinc-500 dark:text-zinc-500 mb-4">พบ {tot} ผลลัพธ์สำหรับ "{q}" — คลิกการ์ดเพื่อไปดูรายละเอียดใน Mind Map · ลิงก์ PDF เปิดแท็บใหม่</p>}
+{sr.length>0&&<div className="mb-6"><h3 className="text-sm font-semibold text-purple-400 mb-3 flex items-center gap-2"><BookOpen size={14}/>มาตรา ({sr.length})</h3><div className="space-y-2">{sr.map(s=>{const pg=s.num!=null?pdfPageForArticle(s.num):null;return(
+<div key={s.id} role="button" tabIndex={0} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();onOpenMindMap(s.id);}}} onClick={()=>onOpenMindMap(s.id)} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/40 rounded-xl p-4 hover:border-amber-600/50 dark:hover:border-amber-500/35 cursor-pointer transition-all text-left w-full">
+<div className="flex items-center gap-2 mb-1"><span className={`text-[11px] font-semibold px-2 py-0.5 rounded-md border ${TC[s.type]}`}>{s.num?`ม.${s.num}`:s.type}</span><span className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">{s.label}</span></div>
+{s.summary&&<p className="text-xs text-zinc-500 dark:text-zinc-400">{s.summary}</p>}
+{s.penalty&&s.penalty!=="—"&&<p className="text-xs text-red-400 mt-1">⚖️ {s.penalty}</p>}
+{pg!=null&&<a href={criminalLawPdfUrl(pg)} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()} className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 dark:text-sky-300 hover:underline"><ExternalLink size={12} aria-hidden />PDF หน้า {pg}</a>}
+{mmHint("เปิดใน Mind Map")}</div>
+);})}</div></div>}
+{vr.length>0&&<div className="mb-6"><h3 className="text-sm font-semibold text-red-400 mb-3 flex items-center gap-2"><Youtube size={14}/>วิดีโอ ({vr.length})</h3><div className="space-y-2">{vr.map(v=>{const sec=findSectionForVideoTags(v.tags,sections);const vpg=sec?.num!=null?pdfPageForArticle(sec.num):null;return(
+<div key={v.id} role="button" tabIndex={0} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();onOpenMindMap(sec?.id??null);}}} onClick={()=>onOpenMindMap(sec?.id??null)} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/40 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3 hover:border-amber-600/50 dark:hover:border-amber-500/35 cursor-pointer transition-all text-left w-full">
+<div className="flex items-center gap-3 flex-1 min-w-0"><PlayCircle size={20} className="text-red-400 flex-shrink-0"/><div className="flex-1 min-w-0"><p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate">{v.title}</p><p className="text-xs text-zinc-500 dark:text-zinc-500">{v.channel} • {v.tags.map(tagDisplayLabel).join(", ")}</p></div></div>
+{vpg!=null&&<a href={criminalLawPdfUrl(vpg)} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()} className="inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 dark:text-sky-300 hover:underline sm:ml-auto"><ExternalLink size={12} aria-hidden />PDF ม.{sec.num} หน้า {vpg}</a>}
+{mmHint(sec?"ไปมาตราที่เกี่ยวข้องใน Mind Map":"เปิด Mind Map (ระบุ tag ม.XXX เพื่อโฟกัสมาตรา)")}</div>);})}</div></div>}
+{nr.length>0&&<div className="mb-6"><h3 className="text-sm font-semibold text-blue-400 mb-3 flex items-center gap-2"><FileText size={14}/>Lecture Notes ({nr.length})</h3><div className="space-y-2">{nr.map(n=>{const sn=n.sectionId?findNodeById(sections,n.sectionId):null;const npg=sn?.type==="section"&&sn.num!=null?pdfPageForArticle(sn.num):null;return(
+<div key={n.id} role="button" tabIndex={0} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();onOpenMindMap(n.sectionId||null);}}} onClick={()=>onOpenMindMap(n.sectionId||null)} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/40 rounded-xl p-4 hover:border-amber-600/50 dark:hover:border-amber-500/35 cursor-pointer transition-all text-left w-full">
+<p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">{n.title}</p><p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">{n.content.replace(/[#*]/g,"").substring(0,100)}...</p>
+{npg!=null&&<a href={criminalLawPdfUrl(npg)} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()} className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 dark:text-sky-300 hover:underline"><ExternalLink size={12} aria-hidden />PDF ม.{sn.num} หน้า {npg}</a>}
+{mmHint(n.sectionId?"เปิดมาตราที่ผูกไว้ใน Mind Map":"เปิด Mind Map (ยังไม่ผูกมาตรา)")}</div>
+);})}</div></div>}
+{ql&&tot===0&&<div className="text-center py-16"><Search size={40} className="text-zinc-400 dark:text-zinc-700 mx-auto mb-3"/><p className="text-zinc-500 dark:text-zinc-500 text-sm">ไม่พบผลลัพธ์สำหรับ "{q}"</p></div>}
+{!ql&&<div className="text-center py-16"><Sparkles size={40} className="text-zinc-400 dark:text-zinc-700 mx-auto mb-3"/><p className="text-zinc-500 dark:text-zinc-500 text-sm">พิมพ์คำค้นเพื่อค้นหามาตรา วิดีโอ และ lecture notes</p><p className="text-xs text-zinc-500 dark:text-zinc-500 mt-2 max-w-md mx-auto">พิมพ์เลขมาตรา เช่น <span className="font-medium text-zinc-600 dark:text-zinc-400">59</span> หรือ <span className="font-medium text-zinc-600 dark:text-zinc-400">ม.288</span> แล้วใช้ลิงก์ด้านบนเพื่อเปิด PDF ไปหน้าที่ใกล้เคียง (#page=)</p><div className="flex flex-wrap justify-center gap-2 mt-4">{["288","ฆ่า","เจตนา","ป้องกัน","ลักทรัพย์","หมิ่นประมาท","อายุความ","ทุจริต","ฉ้อโกง","ประมาท"].map(k=><button key={k} onClick={()=>setQ(k)} className="px-3 py-1.5 text-xs bg-zinc-200/90 dark:bg-zinc-800/50 text-zinc-500 dark:text-zinc-400 rounded-lg border border-zinc-300 dark:border-zinc-700/40 hover:border-amber-500/30 hover:text-amber-400">{k}</button>)}</div></div>}
 </div>);
 }
