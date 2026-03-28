@@ -1,6 +1,15 @@
-import { useState, useEffect, useLayoutEffect, useCallback } from "react";
-import { Search, BookOpen, Youtube, Map, FileText, Plus, Minus, X, ChevronRight, ChevronDown, Star, Edit3, Trash2, Tag, Clock, Save, PlayCircle, ArrowLeft, Sparkles, MessageSquare, CheckCircle, Circle, ExternalLink, Sun, Moon, Lock, Settings } from "lucide-react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
+import { Search, BookOpen, Youtube, Map, FileText, Plus, Minus, X, ChevronRight, ChevronDown, Star, Edit3, Trash2, Tag, Clock, Save, PlayCircle, ArrowLeft, Sparkles, MessageSquare, CheckCircle, Circle, ExternalLink, Sun, Moon, Lock, Settings, Maximize2, Minimize2 } from "lucide-react";
 import { pdfPageForArticle, criminalLawPdfUrl, CRIMINAL_LAW_PDF } from "./articlePdfPages.js";
+import {
+  CRIMINAL_CODE_MAX_ARTICLE,
+  arabicNumStrToThaiDigits,
+  matraThaiFromArabic,
+  articleStubLabelFromArabic,
+  articleStubDetailFromArabic,
+} from "./articleNumeralsDb.js";
+import statuteArticlesSeed from "./statuteArticles.json";
+import { resolveStatuteParagraphs } from "./statuteText.js";
 
 // Storage: localStorage เสมอ + ถ้า VITE_USE_TURSO=1 จะ sync กับ Turso ผ่าน Cloudflare Pages Functions (/api/kv/*)
 const USE_TURSO =
@@ -63,7 +72,7 @@ const store = {
 // ============================================================
 // COMPLETE DATA — ประมวลกฎหมายอาญาไทย (สอดคล้องเนื้อหาหลักจาก public/Criminal_law_update.pdf)
 // ============================================================
-const SECTIONS = [
+const SECTIONS_BASE = [
 { id:"p1", label:"ภาค ๑ บทบัญญัติทั่วไป", type:"part", detail:"หลักการพื้นฐานของกฎหมายอาญา การใช้กฎหมาย โทษ วิธีการเพื่อความปลอดภัย ความรับผิดในทางอาญา การพยายาม ตัวการและผู้สนับสนุน อายุความ (มาตรา ๑ – ๑๐๖)", children:[
   { id:"c1", label:"ลักษณะ ๑ บทบัญญัติที่ใช้แก่ความผิดทั่วไป", type:"chapter", children:[
     // === หมวด 1 บทนิยาม ===
@@ -265,6 +274,18 @@ const SECTIONS = [
     { id:"s301", label:"ม.๓๐๑ ทำให้แท้งลูก (แก้ไข พ.ศ.๒๕๖๔)", type:"section", num:"301",
       summary:"อายุครรภ์ไม่เกิน ๑๒ สัปดาห์ → ไม่เป็นความผิด (แก้ไขล่าสุด)",
       detail:"หญิงใดทำให้ตนเองแท้งลูกหรือยอมให้ผู้อื่นทำให้ตนแท้ง ขณะมีอายุครรภ์เกินสิบสองสัปดาห์\n\nแก้ไขเพิ่มเติม พ.ศ.๒๕๖๔:\n• อายุครรภ์ไม่เกิน ๑๒ สัปดาห์ → ไม่เป็นความผิด\n• ม.๓๐๕ กำหนดข้อยกเว้นเพิ่มเติม เช่น จำเป็นเพื่อสุขภาพหญิง ถูกข่มขืน ทารกพิการรุนแรง", penalty:"จำคุกไม่เกิน ๖ เดือน หรือปรับไม่เกิน ๑๐,๐๐๐ บาท" },
+    ...[302, 303, 304, 305, 306, 307, 308].map((n) => {
+      const ns = String(n);
+      return {
+        id: `s${n}`,
+        type: "section",
+        num: ns,
+        label: articleStubLabelFromArabic(ns),
+        summary: `ในเอกสารกฎหมายใช้ ${matraThaiFromArabic(ns)} — มาตราช่วงแท้งลูก (ระหว่าง ม.๓๐๑ กับ ม.๓๐๙)`,
+        detail: articleStubDetailFromArabic(ns),
+        penalty: "—",
+      };
+    }),
   ]},
   // ลักษณะ 11 เสรีภาพชื่อเสียง
   { id:"c211", label:"ลักษณะ ๑๑ ความผิดเกี่ยวกับเสรีภาพและชื่อเสียง", type:"chapter", detail:"ม.๓๐๙–๓๓๓", children:[
@@ -296,11 +317,74 @@ const SECTIONS = [
 { id:"p3", label:"ภาค ๓ ลหุโทษ", type:"part", detail:"ม.๓๖๗–๓๙๘ ความผิดเล็กน้อย จำคุกไม่เกิน ๑ เดือน หรือปรับไม่เกิน ๑๐,๐๐๐ บาท\n\nหลักสำคัญ (ม.๑๐๒–๑๐๖):\n• พยายามกระทำผิดลหุโทษ → ไม่ต้องรับโทษ\n• ผู้สนับสนุนการกระทำผิดลหุโทษ → ไม่ต้องรับโทษ", children:[
   { id:"s370", label:"ม.๓๗๐ ส่งเสียงอื้ออึง", type:"section", num:"370", summary:"ส่งเสียง/กระทำความอื้ออึงในที่สาธารณะ ทำให้ประชาชนเดือดร้อนรำคาญ", detail:"ผู้ใดส่งเสียง ทำให้เกิดเสียงหรือกระทำความอื้ออึงโดยไม่มีเหตุอันสมควร จนทำให้ประชาชนเดือดร้อนรำคาญ", penalty:"ปรับไม่เกิน ๕,๐๐๐ บาท" },
   { id:"s371", label:"ม.๓๗๑ ทิ้งซากสัตว์/สิ่งปฏิกูล", type:"section", num:"371", summary:"ทิ้งซากสัตว์ สิ่งหมักหมม สิ่งโสโครก ในทางสาธารณะ", detail:"ผู้ใดทิ้งซากสัตว์ สิ่งหมักหมม หรือสิ่งโสโครกในหรือริมทางสาธารณะ", penalty:"ปรับไม่เกิน ๕,๐๐๐ บาท" },
-  { id:"s374", label:"ม.๓๗๔ เก็บทรัพย์สินหาย ไม่ส่งมอบ", type:"section", num:"374", summary:"เก็บได้ซึ่งทรัพย์สินหาย ไม่ส่งมอบแก่เจ้าของ/เจ้าพนักงานภายในเวลาอันสมควร", detail:"ผู้ใดเก็บได้ซึ่งทรัพย์สินหาย แล้วไม่ส่งมอบแก่เจ้าของ ผู้ครอบครอง หรือเจ้าพนักงาน ภายในระยะเวลาอันสมควร", penalty:"ปรับไม่เกิน ๑๐,๐๐๐ บาท" },
+  { id:"s374", label:"ม.๓๗๔ เห็นผู้อื่นในภยันตรายแห่งชีวิตไม่ช่วย", type:"section", num:"374", summary:"เห็นผู้อื่นตกอยู่ในภยันตรายแห่งชีวิต อาจช่วยได้โดยไม่ควรกลัวอันตรายแก่ตนหรือผู้อื่น แต่ไม่ช่วยตามความจำเป็น", detail:"ผู้ใดเห็นผู้อื่นตกอยู่ในภยันตรายแห่งชีวิตซึ่งตนอาจช่วยได้โดยไม่ควรกลัวอันตรายแก่ตนเองหรือผู้อื่นแต่ไม่ช่วยตามความจำเป็น ต้องระวางโทษจำคุกไม่เกินหนึ่งเดือน หรือปรับไม่เกินหนึ่งหมื่นบาท หรือทั้งจำทั้งปรับ\n\n[อัตราโทษ แก้ไขเพิ่มเติมโดยมาตรา ๖ แห่งพระราชบัญญัติแก้ไขเพิ่มเติมประมวลกฎหมายอาญา (ฉบับที่ ๒๒) พ.ศ. ๒๕๕๘]", penalty:"จำคุกไม่เกิน ๑ เดือน หรือปรับไม่เกิน ๑๐,๐๐๐ บาท หรือทั้งจำทั้งปรับ" },
   { id:"s390", label:"ม.๓๙๐ ทำให้เจ็บป่วยโดยประมาท", type:"section", num:"390", summary:"กระทำโดยประมาทเป็นเหตุให้ผู้อื่นรับอันตรายแก่กาย/จิตใจ (ไม่ใช่สาหัส/ตาย)", detail:"ผู้ใดกระทำโดยประมาท เป็นเหตุให้ผู้อื่นรับอันตรายแก่กายหรือจิตใจ\nไม่ใช่อันตรายสาหัส (ถ้าสาหัส → ม.300) และไม่ถึงตาย (ถ้าตาย → ม.291)", penalty:"จำคุกไม่เกิน ๑ เดือน หรือปรับไม่เกิน ๑๐,๐๐๐ บาท" },
   { id:"s393", label:"ม.๓๙๓ ดูหมิ่นซึ่งหน้า", type:"section", num:"393", summary:"ดูหมิ่นผู้อื่นซึ่งหน้า/โฆษณา — ต่างจากหมิ่นประมาท (ม.326) ที่ไม่ต้องใส่ความเท็จ", detail:"ผู้ใดดูหมิ่นผู้อื่นซึ่งหน้าหรือด้วยการโฆษณา\n\nต่างจากหมิ่นประมาท (ม.326):\n• ดูหมิ่น = แสดงกิริยาดูถูก ดูแคลน (ไม่ต้องกล่าวข้อเท็จจริงเท็จ)\n• ซึ่งหน้า = ต่อหน้าผู้เสียหาย\n• หมิ่นประมาท = ใส่ความ (กล่าวข้อเท็จจริง) ต่อบุคคลที่สาม", penalty:"จำคุกไม่เกิน ๑ เดือน หรือปรับไม่เกิน ๑๐,๐๐๐ บาท" },
 ]},
 ];
+
+function collectCuratedSectionNums(nodes, out = new Set()) {
+  for (const n of nodes) {
+    if (n.type === "section" && n.num != null && String(n.num).trim() !== "") {
+      out.add(String(n.num).trim());
+    }
+    if (n.children?.length) collectCuratedSectionNums(n.children, out);
+  }
+  return out;
+}
+
+function buildAdditionalArticleStubs(curatedNums) {
+  const missing = [];
+  for (let i = 1; i <= CRIMINAL_CODE_MAX_ARTICLE; i++) {
+    const s = String(i);
+    if (!curatedNums.has(s)) missing.push(s);
+  }
+  if (missing.length === 0) return null;
+  const CHUNK = 50;
+  const divisions = [];
+  for (let j = 0; j < missing.length; j += CHUNK) {
+    const slice = missing.slice(j, j + CHUNK);
+    const a = slice[0];
+    const b = slice[slice.length - 1];
+    divisions.push({
+      id: `dstub_${a}_${b}`,
+      label: `มาตรา ${arabicNumStrToThaiDigits(a)}–${arabicNumStrToThaiDigits(b)} (เอกสาร) · เลขอารบิก ${a}–${b}`,
+      type: "division",
+      detail: "มาตราในกลุ่มนี้ยังไม่มีคำอธิบายย่อใน Mind Map หลัก — ค้นหาเลขอารบิกแล้วแสดงคู่เลขไทยตามฉบับราชกิจจานุเบกษา",
+      children: slice.map((num) => ({
+        id: `stub_${num}`,
+        type: "section",
+        num,
+        label: articleStubLabelFromArabic(num),
+        summary: `ในเอกสารกฎหมายใช้ ${matraThaiFromArabic(num)} — เปิด PDF เพื่ออ่านข้อความมาตราเต็ม`,
+        detail: articleStubDetailFromArabic(num),
+        penalty: "—",
+      })),
+    });
+  }
+  return {
+    id: "c_stub_index",
+    label: "ดัชนีมาตราเพิ่มเติม (๑–๓๙๗)",
+    type: "chapter",
+    detail: "มาตราที่ยังไม่มีสรุปใน Mind Map หลัก — ค้นหาด้วยเลขอารบิก เช่น 304 หรือ ม.305",
+    children: divisions,
+  };
+}
+
+const curatedSectionNums = collectCuratedSectionNums(SECTIONS_BASE);
+const stubChapter = buildAdditionalArticleStubs(curatedSectionNums);
+const SECTIONS = stubChapter
+  ? [
+      ...SECTIONS_BASE,
+      {
+        id: "p_stub",
+        label: "ภาคเสริม — ดัชนีค้นหามาตรา (๑–๓๙๗)",
+        type: "part",
+        detail: "รวมมาตราที่ยังไม่ปรากฏในโหนดหลัก เพื่อค้นหาเลขและลิงก์ไป PDF",
+        children: [stubChapter],
+      },
+    ]
+  : SECTIONS_BASE;
 
 // ========== SAMPLE VIDEOS & NOTES ========== (same as before)
 const INIT_VIDEOS = [
@@ -319,6 +403,49 @@ const INIT_NOTES = [
 
 // ========== REST OF APP COMPONENTS (same logic, using new data) ==========
 const TC = { part:"bg-amber-500/20 text-amber-400 border-amber-500/30", chapter:"bg-blue-500/20 text-blue-400 border-blue-500/30", division:"bg-teal-500/20 text-teal-400 border-teal-500/30", section:"bg-purple-500/20 text-purple-400 border-purple-500/30" };
+
+/** แสดงวรรคแรก / วรรคสอง / ส่วนที่เหลือ จากฐานข้อมูล (statuteArticles.json) หรือแยกจากฟิลด์ detail ของโหนด */
+function StatuteParagraphsBlock({ node, statuteByNum, compact }) {
+  const r = resolveStatuteParagraphs(node, statuteByNum);
+  const textCls = compact
+    ? "text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed whitespace-pre-wrap"
+    : "text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed whitespace-pre-wrap";
+  const hCls = compact
+    ? "text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 mb-1"
+    : "text-sm font-semibold text-emerald-600 dark:text-emerald-400 mb-2";
+  const hRemain = compact
+    ? "text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 mb-1"
+    : "text-sm font-semibold text-zinc-500 dark:text-zinc-400 mb-2";
+  if (!r.paragraph1 && !r.paragraph2 && !r.remainder && !r.fullText) return null;
+  const wrap = compact ? "space-y-2 max-h-52 overflow-y-auto pr-1 border-t border-zinc-200 dark:border-zinc-800/50 pt-2 mt-2" : "space-y-4";
+  return (
+    <div className={wrap}>
+      {r.paragraph1 ? (
+        <div>
+          <h5 className={hCls}>วรรคแรก</h5>
+          <div className={textCls}>{r.paragraph1}</div>
+        </div>
+      ) : r.fullText ? (
+        <div>
+          <h5 className={hCls}>ข้อความมาตรา</h5>
+          <div className={textCls}>{r.fullText}</div>
+        </div>
+      ) : null}
+      {r.paragraph2 ? (
+        <div>
+          <h5 className={hCls}>วรรคสอง</h5>
+          <div className={textCls}>{r.paragraph2}</div>
+        </div>
+      ) : null}
+      {r.remainder ? (
+        <div>
+          <h5 className={hRemain}>ส่วนถัดจากวรรคสอง</h5>
+          <div className={textCls}>{r.remainder}</div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 const SI = { unwatched:Circle, watching:PlayCircle, watched:CheckCircle };
 const SC = { unwatched:"text-zinc-600 dark:text-zinc-500", watching:"text-amber-400", watched:"text-emerald-400" };
 const cntS = (n) => { let c=0; for(const x of n){ if(x.type==="section")c++; if(x.children)c+=cntS(x.children); } return c; };
@@ -424,6 +551,14 @@ function findSectionByNum(nodes, numStr) {
   }
   return null;
 }
+/** หาโหนดมาตราจากเลข — ลอง num ก่อน แล้ว id stub_<เลข> (ดัชนีเสริม) */
+function findArticleSectionNode(sections, numStr) {
+  const key = String(parseInt(String(numStr), 10));
+  if (!key || key === "NaN") return null;
+  const byNum = findSectionByNum(sections, key);
+  if (byNum) return byNum;
+  return findNodeById(sections, `stub_${key}`);
+}
 function findSectionForVideoTags(tags, sections) {
   for (const t of tags) {
     const s = String(t);
@@ -441,13 +576,75 @@ function findSectionForVideoTags(tags, sections) {
   return null;
 }
 
-/** ดึงเลขมาตราจากข้อความค้นหา เช่น "59", "ม.59", "ม . 288" */
+/** แปลงเลขไทย ๐-๙ และเลข ASCII แบบเต็มความกว้าง เป็น 0-9 (ใช้กับช่องค้นหา) */
+function normalizeDigitsForArticleSearch(str) {
+  return String(str)
+    .replace(/[\u0e50-\u0e59]/g, (ch) => String(ch.charCodeAt(0) - 0x0e50))
+    .replace(/[\uff10-\uff19]/g, (ch) => String(ch.charCodeAt(0) - 0xff10));
+}
+
+/** ดึงเลขมาตราจากข้อความค้นหา — รองรับเลขอารบิกล้วน (304), ม.304, มาตรา 304, ๓๐๔, (304), 304. */
 function parseArticleNumFromSearchQuery(raw) {
-  const s = String(raw).trim();
-  const m1 = s.match(/ม\.?\s*(\d{1,3})\b/i);
-  if (m1) return String(parseInt(m1[1], 10));
-  if (/^\d{1,3}$/.test(s)) return String(parseInt(s, 10));
+  let s = normalizeDigitsForArticleSearch(String(raw).trim().replace(/^\uFEFF/, ""));
+  s = s.replace(/[\u200B-\u200D\uFEFF]/g, "");
+  const inRange = (n) => Number.isFinite(n) && n >= 1 && n <= CRIMINAL_CODE_MAX_ARTICLE;
+  if (/^\d{1,4}$/.test(s)) {
+    const n = parseInt(s, 10);
+    if (inRange(n)) return String(n);
+  }
+  let m = s.match(/มาตรา\s*\.?\s*(\d{1,4})(?:\s*\/\s*\d+)?(?=\D|$)/i);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    if (inRange(n)) return String(n);
+  }
+  m = s.match(/ม\.?\s*(\d{1,4})(?:\s*\/\s*\d+)?(?=\D|$)/i);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    if (inRange(n)) return String(n);
+  }
+  m = s.match(/^[^\d]*(\d{1,4})[^\d]*$/);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    if (inRange(n)) return String(n);
+  }
   return null;
+}
+
+/** ถ้า parse เข้มงวดไม่เจอ — ดึงเลข 1–4 หลักแรกในช่วง 1–397 จากข้อความ (เช่น "ขอดู 304 หน่อย") */
+function looseArticleNumFromSearchQuery(raw) {
+  const s = normalizeDigitsForArticleSearch(String(raw).trim().replace(/[\u200B-\uFEFF]/g, ""));
+  if (!s) return null;
+  const inRange = (n) => Number.isFinite(n) && n >= 1 && n <= CRIMINAL_CODE_MAX_ARTICLE;
+  const matches = s.match(/\d{1,4}/g);
+  if (!matches) return null;
+  for (const tok of matches) {
+    const n = parseInt(tok, 10);
+    if (inRange(n)) return String(n);
+  }
+  return null;
+}
+
+const MAX_ARTICLE_RANGE_SPAN = 150;
+
+/** ช่วงมาตรา เช่น 302-308, 302–308, 302ถึง308, ม.302 ถึง 308 */
+function parseArticleRangeFromSearchQuery(raw) {
+  const s = normalizeDigitsForArticleSearch(String(raw).trim().replace(/[\u200B-\uFEFF]/g, ""));
+  if (!s) return null;
+  const inRange = (n) => Number.isFinite(n) && n >= 1 && n <= CRIMINAL_CODE_MAX_ARTICLE;
+  const m = s.match(/(\d{1,4})\s*(?:[-–—]|ถึง)\s*(\d{1,4})/);
+  if (!m) return null;
+  let a = parseInt(m[1], 10);
+  let b = parseInt(m[2], 10);
+  if (!inRange(a) || !inRange(b)) return null;
+  if (a > b) [a, b] = [b, a];
+  if (b - a > MAX_ARTICLE_RANGE_SPAN) return null;
+  const out = [];
+  for (let i = a; i <= b; i++) out.push(String(i));
+  return out;
+}
+
+function resolveArticleNumberForSearch(raw) {
+  return parseArticleNumFromSearchQuery(raw) ?? looseArticleNumFromSearchQuery(raw);
 }
 
 const FONT_STEPS = [90, 100, 110, 125];
@@ -482,6 +679,8 @@ export default function App(){
   const [nn,setNn]=useState({});
   const [appMeta,setAppMeta]=useState(() => ({ ...DEFAULT_APP_META }));
   const [ld,setLd]=useState(false);
+  const [statuteByNum,setStatuteByNum]=useState(()=>({ ...statuteArticlesSeed }));
+  const [statuteLoadState,setStatuteLoadState]=useState("idle");
   const tryUnlock=useCallback(()=>{
     if(String(gatePw).trim()===String(APP_ACCESS_CODE).trim()){
       try{ sessionStorage.setItem(ACCESS_SESSION_KEY,"1"); } catch {}
@@ -523,6 +722,22 @@ export default function App(){
   useEffect(()=>{if(ld)store.set("n2",nts);},[nts,ld]);
   useEffect(()=>{if(ld)store.set("nn2",nn);},[nn,ld]);
   useEffect(()=>{if(ld)store.set("m2",appMeta);},[appMeta,ld]);
+  useEffect(()=>{
+    if(!accessOk)return;
+    let cancelled=false;
+    setStatuteLoadState("loading");
+    const url=new URL("statuteArticles.json",`${window.location.origin}${import.meta.env.BASE_URL||"/"}`).href;
+    fetch(url)
+      .then((r)=>(r.ok?r.json():null))
+      .then((data)=>{
+        if(cancelled||data==null||typeof data!=="object"){ if(!cancelled)setStatuteLoadState("idle"); return; }
+        const n=Object.keys(data).filter((k)=>data[k]&&typeof data[k]==="object"&&Object.keys(data[k]).length>0).length;
+        setStatuteByNum((prev)=>({ ...prev,...data }));
+        setStatuteLoadState(n>0?"ok":"idle");
+      })
+      .catch(()=>{ if(!cancelled)setStatuteLoadState("idle"); });
+    return()=>{ cancelled=true; };
+  },[accessOk]);
   const st={s:cntS(SECTIONS),v:vids.length,w:vids.filter(v=>v.status==="watched").length,n:nts.length};
   const tabs=[{id:"mindmap",icon:Map,l:"Mind Map"},{id:"youtube",icon:Youtube,l:"YouTube"},{id:"lectures",icon:FileText,l:"Lecture Notes"},{id:"search",icon:Search,l:"ค้นหา"},{id:"settings",icon:Settings,l:"ตั้งค่า"}];
   const stepFont=(d)=>{ const i=FONT_STEPS.indexOf(fontPct); const ni=Math.min(FONT_STEPS.length-1,Math.max(0,i+d)); setFontPct(FONT_STEPS[ni]); };
@@ -564,18 +779,61 @@ export default function App(){
 <div className="max-w-7xl mx-auto px-4 flex gap-0 overflow-x-auto">{tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} className={`px-4 py-2.5 flex items-center gap-2 text-sm font-medium border-b-2 transition-all shrink-0 ${tab===t.id?"border-amber-500 text-amber-700 dark:text-amber-400":"border-transparent text-zinc-600 hover:text-zinc-900 dark:text-zinc-500 dark:hover:text-zinc-300"}`}><t.icon size={16}/>{t.l}</button>)}</div>
 </header>
 <main className="max-w-7xl mx-auto px-4 py-6">
-{tab==="mindmap"&&<MindMapV sections={SECTIONS} nn={nn} setNn={setNn} vids={vids} nts={nts} focusNodeId={mmTargetId} onFocusApplied={clearMmTarget}/>}
+{tab==="mindmap"&&<MindMapV sections={SECTIONS} nn={nn} setNn={setNn} vids={vids} nts={nts} focusNodeId={mmTargetId} onFocusApplied={clearMmTarget} statuteByNum={statuteByNum} statuteLoadState={statuteLoadState}/>}
 {tab==="youtube"&&<YTV vids={vids} setVids={setVids}/>}
 {tab==="lectures"&&<LV nts={nts} setNts={setNts} sections={SECTIONS} isDark={theme==="dark"}/>}
-{tab==="search"&&<SV sections={SECTIONS} vids={vids} nts={nts} onOpenMindMap={(id)=>{setMmTargetId(id);setTab("mindmap");}}/>}
+{tab==="search"&&<SV sections={SECTIONS} vids={vids} nts={nts} onOpenMindMap={(id)=>{setMmTargetId(id);setTab("mindmap");}} statuteByNum={statuteByNum} statuteLoadState={statuteLoadState}/>}
 {tab==="settings"&&<SettingsV vids={vids} setVids={setVids} appMeta={appMeta} setAppMeta={setAppMeta}/>}
 </main></div>);
 }
 
-function MindMapV({sections,nn,setNn,vids,nts,focusNodeId,onFocusApplied}){
+function getFullscreenElement() {
+  return document.fullscreenElement ?? document.webkitFullscreenElement ?? null;
+}
+async function exitDetailFullscreen() {
+  const d = document;
+  if (d.exitFullscreen) await d.exitFullscreen();
+  else if (d.webkitExitFullscreen) d.webkitExitFullscreen();
+}
+async function enterDetailFullscreen(el) {
+  if (!el) return;
+  if (el.requestFullscreen) await el.requestFullscreen();
+  else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+}
+
+function MindMapV({sections,nn,setNn,vids,nts,focusNodeId,onFocusApplied,statuteByNum,statuteLoadState}){
   const [sel,setSel]=useState(null);
   const [exp,setExp]=useState(new Set(["p1","p2","p3"]));
   const [nt,setNt]=useState("");
+  const detailPanelRef=useRef(null);
+  const [detailPanelFs,setDetailPanelFs]=useState(false);
+  useEffect(()=>{
+    const sync=()=>{
+      const el=getFullscreenElement();
+      setDetailPanelFs(Boolean(el&&detailPanelRef.current&&el===detailPanelRef.current));
+    };
+    sync();
+    document.addEventListener("fullscreenchange",sync);
+    document.addEventListener("webkitfullscreenchange",sync);
+    return()=>{
+      document.removeEventListener("fullscreenchange",sync);
+      document.removeEventListener("webkitfullscreenchange",sync);
+    };
+  },[]);
+  const toggleDetailFullscreen=useCallback(async()=>{
+    const el=detailPanelRef.current;
+    if(!el)return;
+    try{
+      if(getFullscreenElement()===el)await exitDetailFullscreen();
+      else await enterDetailFullscreen(el);
+    }catch{/* บางเบราว์เซอร์ปฏิเสธเต็มจอ */}
+  },[]);
+  useEffect(()=>{
+    if(!sel){
+      void exitDetailFullscreen();
+      setDetailPanelFs(false);
+    }
+  },[sel]);
   useEffect(()=>{
     if(!focusNodeId)return;
     const node=findNodeById(sections,focusNodeId);
@@ -593,6 +851,10 @@ function MindMapV({sections,nn,setNn,vids,nts,focusNodeId,onFocusApplied}){
   const delN=(sid,nid)=>{const ex=nn[sid]||[];setNn({...nn,[sid]:ex.filter(n=>n.id!==nid)});};
   const rv=sel?vids.filter(v=>v.tags.some(t=>t.includes(sel.num||"_none_"))):[];
   const rn=sel?nts.filter(n=>n.sectionId===sel.id):[];
+  const statuteResolved = sel?.type === "section" ? resolveStatuteParagraphs(sel, statuteByNum) : null;
+  const hasStatuteBody =
+    statuteResolved &&
+    !!(statuteResolved.fullText || statuteResolved.paragraph1 || statuteResolved.paragraph2 || statuteResolved.remainder);
   return(
 <div className="flex gap-6" style={{minHeight:"calc(100vh - 160px)"}}>
 <div className="flex-1 min-w-0">
@@ -600,10 +862,34 @@ function MindMapV({sections,nn,setNn,vids,nts,focusNodeId,onFocusApplied}){
 <button onClick={()=>setExp(new Set(["p1","p2","p3"]))} className="text-xs text-zinc-500 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 px-3 py-1.5 rounded-lg bg-zinc-200/90 dark:bg-zinc-800/50">ยุบทั้งหมด</button></div>
 <div className="space-y-0.5">{sections.map(s=><TN key={s.id} n={s} d={0} ex={exp} tog={tog} sel={sel} setSel={setSel} nn={nn}/>)}</div></div>
 <div className="w-[400px] flex-shrink-0">{sel?(
-<div className="sticky top-36 bg-white/95 dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-2xl overflow-hidden max-h-[calc(100vh-170px)] overflow-y-auto">
-<div className="p-5 border-b border-zinc-200 dark:border-zinc-800/40"><span className={`text-[11px] font-semibold px-2 py-0.5 rounded-md border ${TC[sel.type]}`}>{sel.type==="section"?`มาตรา ${sel.num}`:sel.type==="part"?"ภาค":sel.type==="chapter"?"ลักษณะ":"หมวด"}</span>
+<div
+ref={detailPanelRef}
+className={`sticky top-36 border border-zinc-200 dark:border-zinc-800/60 overflow-hidden overflow-y-auto ${
+  detailPanelFs
+    ? "h-full max-h-none min-h-[100dvh] rounded-none bg-white dark:bg-zinc-950 shadow-none"
+    : "max-h-[calc(100vh-170px)] rounded-2xl bg-white/95 dark:bg-zinc-900/80"
+}`}
+>
+<div className="p-5 border-b border-zinc-200 dark:border-zinc-800/40">
+<div className="flex items-start justify-between gap-3">
+<div className="min-w-0 flex-1">
+<span className={`text-[11px] font-semibold px-2 py-0.5 rounded-md border ${TC[sel.type]}`}>{sel.type==="section"?`มาตรา ${sel.num}`:sel.type==="part"?"ภาค":sel.type==="chapter"?"ลักษณะ":"หมวด"}</span>
 <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 mt-2">{sel.label}</h3>
-{sel.summary&&<p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1.5 leading-relaxed">{sel.summary}</p>}
+</div>
+<button
+type="button"
+onClick={()=>void toggleDetailFullscreen()}
+className="shrink-0 p-2 rounded-xl border border-zinc-300 dark:border-zinc-600 bg-zinc-100/90 dark:bg-zinc-800/70 text-zinc-600 dark:text-zinc-300 hover:border-amber-500/50 hover:text-amber-700 dark:hover:text-amber-400 transition-colors"
+title={detailPanelFs?"ออกจากเต็มจอ (Esc)":"แสดงเนื้อหานี้เต็มจอ"}
+aria-expanded={detailPanelFs}
+>
+{detailPanelFs?<Minimize2 size={18} aria-hidden />:<Maximize2 size={18} aria-hidden />}
+</button>
+</div>
+{sel.type==="section"&&sel.num!=null&&matraThaiFromArabic(sel.num)&&(
+<p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1.5">ฉบับราชกิจจานุเบกษา (เลขไทย): <span className="font-semibold text-zinc-700 dark:text-zinc-300">{matraThaiFromArabic(sel.num)}</span>
+<span className="text-zinc-500 dark:text-zinc-500"> · เลขอารบิก ม.{sel.num}</span></p>)}
+{sel.type!=="section"&&sel.summary&&<p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1.5 leading-relaxed">{sel.summary}</p>}
 {sel.penalty&&sel.penalty!=="—"&&<div className="mt-3 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400 flex items-center gap-2">⚖️ {sel.penalty}</div>}
 {sel.type==="section"&&(()=>{const pg=pdfPageForArticle(sel.num);return(
 <div className="mt-3 flex flex-wrap gap-2">
@@ -620,7 +906,24 @@ function MindMapV({sections,nn,setNn,vids,nts,focusNodeId,onFocusApplied}){
 )}</div>
 );})()}
 </div>
-{sel.detail&&<div className="p-5 border-b border-zinc-200 dark:border-zinc-800/40"><h4 className="text-sm font-semibold text-blue-400 mb-2 flex items-center gap-2"><BookOpen size={14}/>คำอธิบาย</h4><div className="text-sm text-zinc-400 dark:text-zinc-300 leading-relaxed whitespace-pre-wrap">{sel.detail}</div></div>}
+{sel.type==="section"&&(hasStatuteBody||statuteResolved?.isStubPlaceholder||(!statuteResolved?.isStubPlaceholder&&sel.detail))&&(
+<div className="p-5 border-b border-zinc-200 dark:border-zinc-800/40">
+<h4 className="text-sm font-semibold text-blue-400 mb-2 flex items-center gap-2"><BookOpen size={14}/>ข้อความมาตรา (แยกวรรค)</h4>
+<p className="text-[11px] text-zinc-500 dark:text-zinc-500 mb-3 leading-relaxed">วรรคแรก / วรรคสอง มาจากการแบ่งย่อหน้าในฐานข้อมูล (สกัดจาก PDF) หรือจากข้อความสรุปในแอป — ใช้ตีความตามตัวอักษรเมื่อเป็นข้อความจากฐานข้อมูล</p>
+{hasStatuteBody&&<StatuteParagraphsBlock node={sel} statuteByNum={statuteByNum} />}
+{!hasStatuteBody&&statuteResolved?.isStubPlaceholder&&statuteLoadState==="loading"&&(
+<p className="text-xs text-zinc-500 dark:text-zinc-400">กำลังโหลดข้อความมาตราจาก statuteArticles.json …</p>
+)}
+{!hasStatuteBody&&statuteResolved?.isStubPlaceholder&&statuteLoadState!=="loading"&&(
+<p className="text-xs text-amber-700 dark:text-amber-400/90 leading-relaxed">
+ยังไม่มีข้อความตามตัวอักษรในเว็บสำหรับมาตรานี้ — วางไฟล์ <code className="text-[11px] bg-zinc-200/80 dark:bg-zinc-800/60 px-1 rounded">public/Criminal_law_update.pdf</code> แล้วรัน <code className="text-[11px] bg-zinc-200/80 dark:bg-zinc-800/60 px-1 rounded">npm run extract-statutes</code>
+(ต้องติดตั้ง Python และ <code className="text-[11px] bg-zinc-200/80 dark:bg-zinc-800/60 px-1 rounded">pip install pypdf</code>) ระบบจะสร้าง <code className="text-[11px] bg-zinc-200/80 dark:bg-zinc-800/60 px-1 rounded">public/statuteArticles.json</code> ให้โหลดอัตโนมัติ
+</p>
+)}
+{statuteResolved?.fromDatabase&&<p className="text-[10px] text-zinc-500 dark:text-zinc-500 mt-3">ที่มาข้อความ: สกัดจาก PDF → statuteArticles.json</p>}
+{sel.summary&&<div className="mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-800/50"><p className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400 mb-1">สรุปความในแอป (ไม่ใช่ข้อความตามตัวอักษรของกฎหมาย)</p><p className="text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed">{sel.summary}</p></div>}
+</div>)}
+{sel.type!=="section"&&sel.detail&&<div className="p-5 border-b border-zinc-200 dark:border-zinc-800/40"><h4 className="text-sm font-semibold text-blue-400 mb-2 flex items-center gap-2"><BookOpen size={14}/>รายละเอียด</h4><div className="text-sm text-zinc-400 dark:text-zinc-300 leading-relaxed whitespace-pre-wrap">{sel.detail}</div></div>}
 <div className="p-5 border-b border-zinc-200 dark:border-zinc-800/40"><h4 className="text-sm font-semibold text-amber-400 mb-3 flex items-center gap-2"><MessageSquare size={14}/>บันทึกส่วนตัว ({(nn[sel.id]||[]).length})</h4>
 <div className="space-y-2 max-h-40 overflow-y-auto mb-3">{(nn[sel.id]||[]).map(n=><div key={n.id} className="bg-zinc-200/90 dark:bg-zinc-800/50 rounded-lg p-3 text-sm text-zinc-400 dark:text-zinc-300 group relative">{n.text}<button onClick={()=>delN(sel.id,n.id)} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-zinc-500 dark:text-zinc-500 hover:text-red-400"><X size={14}/></button></div>)}</div>
 <div className="flex gap-2"><input value={nt} onChange={e=>setNt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addN()} placeholder="พิมพ์บันทึก..." className="flex-1 bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none focus:border-amber-500/50"/><button onClick={addN} className="px-3 py-2 bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30"><Plus size={16}/></button></div></div>
@@ -844,14 +1147,82 @@ function NE({note,onSave,onCancel,sections}){
 <div className="flex gap-2"><button onClick={onCancel} className="px-4 py-2 text-sm text-zinc-500 dark:text-zinc-400">ยกเลิก</button><button onClick={()=>{if(!f.title.trim())return;onSave(f);}} className="px-4 py-2 bg-blue-500/20 text-blue-400 rounded-lg text-sm font-medium hover:bg-blue-500/30 border border-blue-500/20 flex items-center gap-2"><Save size={14}/>บันทึก</button></div></div></div>);
 }
 
-function SV({sections,vids,nts,onOpenMindMap}){
-  const [q,setQ]=useState("");const ql=q.toLowerCase();
-  const sr=[];const ss=(ns)=>{for(const n of ns){if(ql&&(n.label.toLowerCase().includes(ql)||n.summary?.toLowerCase().includes(ql)||n.detail?.toLowerCase().includes(ql)||n.num?.includes(ql)))sr.push(n);if(n.children)ss(n.children);}};if(ql)ss(sections);
+function SV({sections,vids,nts,onOpenMindMap,statuteByNum,statuteLoadState}){
+  const [q,setQ]=useState("");
+  const qt = q.trim();
+  const qNorm = normalizeDigitsForArticleSearch(qt);
+  const ql = qNorm.toLowerCase();
+  const qRange = qt ? parseArticleRangeFromSearchQuery(qt) : null;
+  const isArticleRange = qRange != null && qRange.length > 1;
+  const qArticle = !isArticleRange && qt ? resolveArticleNumberForSearch(qt) : null;
+  const docMatra = qArticle ? matraThaiFromArabic(qArticle) : "";
+  const docMatraRange =
+    isArticleRange && qRange
+      ? `${matraThaiFromArabic(qRange[0])}–${matraThaiFromArabic(qRange[qRange.length - 1])}`
+      : "";
+  const sr=[];
+  const qlNorm = ql.replace(/\s+/g, " ").trim();
+  const ss=(ns)=>{for(const n of ns){if(!qlNorm)continue;let statHit=false;if(n.type==="section"&&n.num!=null){const k=String(n.num).trim();const rec=statuteByNum[k];if(rec&&typeof rec==="object"&&Object.keys(rec).length>0){const blob=[rec.fullText,rec.detail,rec.paragraph1,rec.paragraph2,rec.remainder].filter(Boolean).join("\n").toLowerCase();statHit=blob.includes(qlNorm);}}const lab=n.label.toLowerCase();const sm=n.summary?.toLowerCase()??"";const det=n.detail?.toLowerCase()??"";const numStr=n.num!=null?String(n.num):"";const hit=lab.includes(qlNorm)||sm.includes(qlNorm)||det.includes(qlNorm)||(numStr&&numStr===qlNorm)||(numStr&&qlNorm.length>=2&&numStr.includes(qlNorm))||(docMatra&&(n.label.includes(docMatra)||(n.summary&&n.summary.includes(docMatra))||(n.detail&&n.detail.includes(docMatra))))||statHit;if(hit)sr.push(n);if(n.children)ss(n.children);}};
+  if(qlNorm)ss(sections);
+  if (isArticleRange && qRange) {
+    const keys = new Set(qRange.map(String));
+    for (let i = sr.length - 1; i >= 0; i--) {
+      const x = sr[i];
+      if (x.type === "section" && x.num != null && keys.has(String(x.num))) sr.splice(i, 1);
+    }
+    const hitsOrdered = qRange.map((numStr) => {
+      let hit = findArticleSectionNode(sections, numStr);
+      if (!hit) {
+        const rec = statuteByNum[numStr];
+        const recOk = rec && typeof rec === "object" && Object.keys(rec).length > 0;
+        hit = {
+          id: `stub_${numStr}`,
+          type: "section",
+          num: numStr,
+          label: articleStubLabelFromArabic(numStr),
+          summary: recOk
+            ? `ข้อความมาตราเต็มจากฐานข้อมูล (แยกวรรค) — ${matraThaiFromArabic(numStr)}`
+            : `ในเอกสารกฎหมายใช้ ${matraThaiFromArabic(numStr)} — เปิด PDF เพื่ออ่านข้อความมาตราเต็ม`,
+          detail: recOk ? "" : articleStubDetailFromArabic(numStr),
+          penalty: "—",
+        };
+      }
+      return hit;
+    });
+    sr.unshift(...hitsOrdered);
+  } else if (qArticle) {
+    let hit = findArticleSectionNode(sections, qArticle);
+    if (!hit) {
+      const rec = statuteByNum[qArticle];
+      const recOk = rec && typeof rec === "object" && Object.keys(rec).length > 0;
+      hit = {
+        id: `stub_${qArticle}`,
+        type: "section",
+        num: qArticle,
+        label: articleStubLabelFromArabic(qArticle),
+        summary: recOk
+          ? `ข้อความมาตราเต็มจากฐานข้อมูล (แยกวรรค) — ${matraThaiFromArabic(qArticle)}`
+          : `ในเอกสารกฎหมายใช้ ${matraThaiFromArabic(qArticle)} — เปิด PDF เพื่ออ่านข้อความมาตราเต็ม`,
+        detail: recOk ? "" : articleStubDetailFromArabic(qArticle),
+        penalty: "—",
+      };
+    }
+    const hasNum = sr.some((x) => x.type === "section" && String(x.num) === String(qArticle));
+    if (!hasNum) sr.unshift(hit);
+    else {
+      const ix = sr.findIndex((x) => x.type === "section" && String(x.num) === String(qArticle));
+      if (ix > 0) {
+        const [one] = sr.splice(ix, 1);
+        sr.unshift(one);
+      }
+    }
+  }
   const vr=ql?vids.filter(v=>v.title.toLowerCase().includes(ql)||v.tags.some(t=>tagMatchesQuery(t,ql))):[];
   const nr=ql?nts.filter(n=>n.title.toLowerCase().includes(ql)||n.content.toLowerCase().includes(ql)):[];
   const tot=sr.length+vr.length+nr.length;
-  const qArticle = ql ? parseArticleNumFromSearchQuery(q) : null;
   const qPdfPage = qArticle != null ? pdfPageForArticle(qArticle) : null;
+  const qPdfPageRangeLo = isArticleRange && qRange ? pdfPageForArticle(qRange[0]) : null;
+  const qPdfPageRangeHi = isArticleRange && qRange ? pdfPageForArticle(qRange[qRange.length - 1]) : null;
   const mmHint=(sub)=>(
     <div className="mt-3 pt-2 border-t border-zinc-200 dark:border-zinc-800/50 flex items-center justify-end gap-1 text-[11px] text-amber-500/90">
       <Map size={12} className="opacity-80"/>{sub}
@@ -860,10 +1231,44 @@ function SV({sections,vids,nts,onOpenMindMap}){
   );
   return(<div>
 <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2 mb-5"><Search size={20} className="text-amber-500"/>ค้นหาทั้งระบบ</h2>
-<div className="relative mb-6"><Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 dark:text-zinc-500"/><input value={q} onChange={e=>setQ(e.target.value)} placeholder='ค้นหา เช่น "288" "ฆ่า" "เจตนา" "ป้องกัน" "หมิ่นประมาท"' autoFocus className="w-full bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 rounded-2xl pl-12 pr-4 py-3.5 text-base text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none focus:border-amber-500/50"/></div>
-{ql && qArticle && (
+<div className="relative mb-6"><Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 dark:text-zinc-500"/><input value={q} onChange={e=>setQ(e.target.value)} placeholder='ค้นหา เช่น 304, 302-308, 302ถึง308, ม.288' autoFocus className="w-full bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 rounded-2xl pl-12 pr-4 py-3.5 text-base text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none focus:border-amber-500/50"/></div>
+{qt && isArticleRange && qRange && (
 <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-sky-500/30 bg-sky-500/10 dark:bg-sky-500/10 px-4 py-3 text-sm">
-<span className="text-zinc-700 dark:text-zinc-300">มาตรา {qArticle} ในไฟล์ PDF (กฤษฎีกา):</span>
+<span className="text-zinc-700 dark:text-zinc-300">
+ช่วงเลขอารบิก ม.{qRange[0]}–ม.{qRange[qRange.length - 1]} — ในเอกสาร (เลขไทย): <strong className="text-zinc-900 dark:text-zinc-100">{docMatraRange}</strong>
+<span className="text-zinc-500 dark:text-zinc-400 font-normal"> · PDF กฤษฎีกา:</span>
+</span>
+{qPdfPageRangeLo != null && qPdfPageRangeHi != null && qPdfPageRangeLo === qPdfPageRangeHi ? (
+<a href={criminalLawPdfUrl(qPdfPageRangeLo)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 font-medium text-sky-700 dark:text-sky-300 hover:underline">
+<ExternalLink size={14} aria-hidden />
+เปิดหน้า {qPdfPageRangeLo}
+</a>
+) : qPdfPageRangeLo != null && qPdfPageRangeHi != null ? (
+<span className="flex flex-wrap items-center gap-2">
+<a href={criminalLawPdfUrl(qPdfPageRangeLo)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 font-medium text-sky-700 dark:text-sky-300 hover:underline">
+<ExternalLink size={14} aria-hidden />
+ม.{qRange[0]} หน้า {qPdfPageRangeLo}
+</a>
+<span className="text-zinc-400">·</span>
+<a href={criminalLawPdfUrl(qPdfPageRangeHi)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 font-medium text-sky-700 dark:text-sky-300 hover:underline">
+<ExternalLink size={14} aria-hidden />
+ม.{qRange[qRange.length - 1]} หน้า {qPdfPageRangeHi}
+</a>
+</span>
+) : (
+<a href={CRIMINAL_LAW_PDF} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 font-medium text-sky-700 dark:text-sky-300 hover:underline">
+<ExternalLink size={14} aria-hidden />
+เปิด PDF แล้วใช้ Ctrl+F ค้นตามเลขมาตรา
+</a>
+)}
+</div>
+)}
+{qt && qArticle && !isArticleRange && (
+<div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-sky-500/30 bg-sky-500/10 dark:bg-sky-500/10 px-4 py-3 text-sm">
+<span className="text-zinc-700 dark:text-zinc-300">
+เลขอารบิก ม.{qArticle} — ในเอกสาร (เลขไทย): <strong className="text-zinc-900 dark:text-zinc-100">{docMatra}</strong>
+<span className="text-zinc-500 dark:text-zinc-400 font-normal"> · PDF กฤษฎีกา:</span>
+</span>
 {qPdfPage != null ? (
 <a href={criminalLawPdfUrl(qPdfPage)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 font-medium text-sky-700 dark:text-sky-300 hover:underline">
 <ExternalLink size={14} aria-hidden />
@@ -877,11 +1282,12 @@ function SV({sections,vids,nts,onOpenMindMap}){
 )}
 </div>
 )}
-{ql&&<p className="text-sm text-zinc-500 dark:text-zinc-500 mb-4">พบ {tot} ผลลัพธ์สำหรับ "{q}" — คลิกการ์ดเพื่อไปดูรายละเอียดใน Mind Map · ลิงก์ PDF เปิดแท็บใหม่</p>}
-{sr.length>0&&<div className="mb-6"><h3 className="text-sm font-semibold text-purple-400 mb-3 flex items-center gap-2"><BookOpen size={14}/>มาตรา ({sr.length})</h3><div className="space-y-2">{sr.map(s=>{const pg=s.num!=null?pdfPageForArticle(s.num):null;return(
+{(qlNorm || qArticle || isArticleRange)&&<p className="text-sm text-zinc-500 dark:text-zinc-500 mb-4">พบ {tot} ผลลัพธ์สำหรับ "{qt || (qArticle ? `ม.${qArticle}` : "")}" — คลิกการ์ดเพื่อไปดูรายละเอียดใน Mind Map · ลิงก์ PDF เปิดแท็บใหม่</p>}
+{sr.length>0&&<div className="mb-6"><h3 className="text-sm font-semibold text-purple-400 mb-3 flex items-center gap-2"><BookOpen size={14}/>มาตรา ({sr.length})</h3><div className="space-y-2">{sr.map(s=>{const pg=s.num!=null?pdfPageForArticle(s.num):null;const r=s.type==="section"?resolveStatuteParagraphs(s,statuteByNum):null;const hb=r&&!!(r.fullText||r.paragraph1||r.paragraph2||r.remainder);return(
 <div key={s.id} role="button" tabIndex={0} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();onOpenMindMap(s.id);}}} onClick={()=>onOpenMindMap(s.id)} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/40 rounded-xl p-4 hover:border-amber-600/50 dark:hover:border-amber-500/35 cursor-pointer transition-all text-left w-full">
-<div className="flex items-center gap-2 mb-1"><span className={`text-[11px] font-semibold px-2 py-0.5 rounded-md border ${TC[s.type]}`}>{s.num?`ม.${s.num}`:s.type}</span><span className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">{s.label}</span></div>
-{s.summary&&<p className="text-xs text-zinc-500 dark:text-zinc-400">{s.summary}</p>}
+<div className="flex items-center gap-2 mb-1 flex-wrap"><span className={`text-[11px] font-semibold px-2 py-0.5 rounded-md border ${TC[s.type]}`}>{s.type==="section"&&s.num!=null?matraThaiFromArabic(s.num):s.num?`ม.${s.num}`:s.type}</span>{s.type==="section"&&s.num!=null&&<span className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400 tabular-nums">ม.{s.num}</span>}<span className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">{s.label}</span></div>
+{s.type==="section"&&(hb?<StatuteParagraphsBlock node={s} statuteByNum={statuteByNum} compact/>:r?.isStubPlaceholder&&statuteLoadState==="loading"?<p className="text-xs text-zinc-500 dark:text-zinc-400">กำลังโหลดข้อความมาตรา…</p>:s.summary?<p className="text-xs text-zinc-500 dark:text-zinc-400">{s.summary}</p>:null)}
+{s.type==="section"&&s.summary&&(hb||(s.detail&&!r?.isStubPlaceholder))&&<p className="text-[10px] text-zinc-500 dark:text-zinc-500 mt-1 italic">สรุปในแอป (ไม่ใช่ข้อความตามตัวอักษร): {s.summary}</p>}
 {s.penalty&&s.penalty!=="—"&&<p className="text-xs text-red-400 mt-1">⚖️ {s.penalty}</p>}
 {pg!=null&&<a href={criminalLawPdfUrl(pg)} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()} className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 dark:text-sky-300 hover:underline"><ExternalLink size={12} aria-hidden />PDF หน้า {pg}</a>}
 {mmHint("เปิดใน Mind Map")}</div>
@@ -897,7 +1303,7 @@ function SV({sections,vids,nts,onOpenMindMap}){
 {npg!=null&&<a href={criminalLawPdfUrl(npg)} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()} className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 dark:text-sky-300 hover:underline"><ExternalLink size={12} aria-hidden />PDF ม.{sn.num} หน้า {npg}</a>}
 {mmHint(n.sectionId?"เปิดมาตราที่ผูกไว้ใน Mind Map":"เปิด Mind Map (ยังไม่ผูกมาตรา)")}</div>
 );})}</div></div>}
-{ql&&tot===0&&<div className="text-center py-16"><Search size={40} className="text-zinc-400 dark:text-zinc-700 mx-auto mb-3"/><p className="text-zinc-500 dark:text-zinc-500 text-sm">ไม่พบผลลัพธ์สำหรับ "{q}"</p></div>}
-{!ql&&<div className="text-center py-16"><Sparkles size={40} className="text-zinc-400 dark:text-zinc-700 mx-auto mb-3"/><p className="text-zinc-500 dark:text-zinc-500 text-sm">พิมพ์คำค้นเพื่อค้นหามาตรา วิดีโอ และ lecture notes</p><p className="text-xs text-zinc-500 dark:text-zinc-500 mt-2 max-w-md mx-auto">พิมพ์เลขมาตรา เช่น <span className="font-medium text-zinc-600 dark:text-zinc-400">59</span> หรือ <span className="font-medium text-zinc-600 dark:text-zinc-400">ม.288</span> แล้วใช้ลิงก์ด้านบนเพื่อเปิด PDF ไปหน้าที่ใกล้เคียง (#page=)</p><div className="flex flex-wrap justify-center gap-2 mt-4">{["288","ฆ่า","เจตนา","ป้องกัน","ลักทรัพย์","หมิ่นประมาท","อายุความ","ทุจริต","ฉ้อโกง","ประมาท"].map(k=><button key={k} onClick={()=>setQ(k)} className="px-3 py-1.5 text-xs bg-zinc-200/90 dark:bg-zinc-800/50 text-zinc-500 dark:text-zinc-400 rounded-lg border border-zinc-300 dark:border-zinc-700/40 hover:border-amber-500/30 hover:text-amber-400">{k}</button>)}</div></div>}
+{(qlNorm || qArticle || isArticleRange)&&tot===0&&<div className="text-center py-16"><Search size={40} className="text-zinc-400 dark:text-zinc-700 mx-auto mb-3"/><p className="text-zinc-500 dark:text-zinc-500 text-sm">ไม่พบผลลัพธ์สำหรับ "{qt || (qArticle ? `ม.${qArticle}` : "")}"</p></div>}
+{!qt&&<div className="text-center py-16"><Sparkles size={40} className="text-zinc-400 dark:text-zinc-700 mx-auto mb-3"/><p className="text-zinc-500 dark:text-zinc-500 text-sm">พิมพ์คำค้นเพื่อค้นหามาตรา วิดีโอ และ lecture notes</p><p className="text-xs text-zinc-500 dark:text-zinc-500 mt-2 max-w-md mx-auto">พิมพ์เลขอารบิก 1–397 เช่น <span className="font-medium text-zinc-600 dark:text-zinc-400">304</span> หรือช่วง <span className="font-medium text-zinc-600 dark:text-zinc-400">302-308</span> / <span className="font-medium text-zinc-600 dark:text-zinc-400">302ถึง308</span> — ระบบจะแสดงคู่เลขไทยในเอกสาร · หรือค้น <span className="font-medium text-zinc-600 dark:text-zinc-400">ม.288</span> / ถ้อยคำทั่วไป</p><div className="flex flex-wrap justify-center gap-2 mt-4">{["288","304","302-308","ฆ่า","เจตนา","ป้องกัน","ลักทรัพย์","หมิ่นประมาท","อายุความ","ทุจริต","ฉ้อโกง","ประมาท"].map(k=><button key={k} onClick={()=>setQ(k)} className="px-3 py-1.5 text-xs bg-zinc-200/90 dark:bg-zinc-800/50 text-zinc-500 dark:text-zinc-400 rounded-lg border border-zinc-300 dark:border-zinc-700/40 hover:border-amber-500/30 hover:text-amber-400">{k}</button>)}</div></div>}
 </div>);
 }

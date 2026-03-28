@@ -16,16 +16,56 @@ const py = `
 from pypdf import PdfReader
 import re
 import json
+import unicodedata
 th = str.maketrans('๐๑๒๓๔๕๖๗๘๙', '0123456789')
+MAX_ART, MAX_FN = 397, 4
+
+def split_glue(d):
+    if not d.isdigit() or len(d) < 4:
+        return None
+    for i in range(min(3, len(d)), 0, -1):
+        main, rest = d[:i], d[i:]
+        try:
+            v = int(main)
+        except ValueError:
+            continue
+        if 1 <= v <= MAX_ART:
+            if rest == "" or (rest.isdigit() and 1 <= len(rest) <= MAX_FN):
+                return (main, rest)
+    return None
+
+def norm_glued(text):
+    text = unicodedata.normalize("NFKC", text)
+    for z in (chr(0x200b), chr(0x200c), chr(0x200d), chr(0xfeff)):
+        text = text.replace(z, "")
+    def r_break(m):
+        prefix, digits = m.group(1), m.group(2)
+        sp = split_glue(digits)
+        if not sp:
+            return m.group(0)
+        return prefix + sp[0] + chr(10)
+    def r_inline(m):
+        prefix, digits, tail = m.group(1), m.group(2), m.group(3)
+        sp = split_glue(digits)
+        if not sp:
+            return m.group(0)
+        return prefix + sp[0] + " " + tail
+    text = re.sub(r"(มาตรา(?:\\s*\\[[\\d]+\\]\\s*)*)(\\d{4,})(?=\\s*\\n)", r_break, text)
+    text = re.sub(r"(มาตรา(?:\\s*\\[[\\d]+\\]\\s*)*)(\\d{4,})\\s*([\\u0e00-\\u0e5f(])", r_inline, text)
+    return text
+
 r = PdfReader(r'''${pdf.replace(/\\/g, "\\\\")}''')
-# บรรทัดใหม่ + มาตรา + เลข (ไม่ติดกับเลขต่อท้าย) + เนื้อความมาตรา
-line_pat = re.compile(r'(?:^|\\n)\\s*มาตรา\\s*(\\d+)(?:/(\\d+))?\\s+\\S', re.MULTILINE)
+# บรรทัดใหม่ + มาตรา + เลข + เนื้อความ (หลัง norm_glued แยกเลขตัวห้อยติดมาตราแล้ว)
+line_pat = re.compile(
+    r'(?:^|\\n)\\s*มาตรา\\s*(?:\\[[\\d]+\\]\\s*)*(\\d+)(?:/(\\d+))?\\s*(?:\\[[\\d]+\\]\\s*)*\\S',
+    re.MULTILINE,
+)
 start_pat = re.compile(
     r'มาตรา\\s*(\\d+(?:\\s*/\\s*\\d+)?)\\s{1,6}(?:ผู้ใด|ผู้|บุคคล|ถ้า|ใน|เจ้าพนักงาน|เจ้า|หญิง|ความ|ข้อ|เมื่อ|อัน|ซึ่ง|ไม่|ย่อม|โทษ|ห้าม|ทรัพย์|การ|เด็ก|ข้อความ|เลข|องค์|ภาย|แม้|แต่|ใคร|คน|หาก|ทรง|พระราช|นาย|ส่วน|ความผิด|อาญา|ฝ่าย|บิดา|ภริยา|สามี|หญิงใด|บุรุษ|ผู้ใดกระทำ|ผู้กระทำ|ผู้ถูก|หมู่|สัตว์|เรือ|อากาศยาน|ผู้ซึ่ง|ผู้นั้น|ผู้หนึ่ง|หญิง|บุคคลใด)'
 )
 first = {}
 for i, p in enumerate(r.pages):
-    t = (p.extract_text() or '').translate(th)
+    t = norm_glued((p.extract_text() or '').translate(th))
     for m in line_pat.finditer(t):
         main = str(int(m.group(1)))
         sub = m.group(2)
