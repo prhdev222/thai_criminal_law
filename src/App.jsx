@@ -27,9 +27,11 @@ function mergeStatuteFetchedWithSeedFirstTen(prev, fetched) {
   return base;
 }
 
-// Storage: localStorage เสมอ + ถ้า VITE_USE_TURSO=1 จะ sync กับ Turso ผ่าน Cloudflare Pages Functions (/api/kv/*)
+// Storage: ไม่ใช้ Turso → localStorage เท่านั้น | ใช้ Turso → อ่าน/เขียนเฉพาะ API (ไม่ fallback / ไม่เขียนเครื่องก่อน)
 const USE_TURSO =
   import.meta.env.VITE_USE_TURSO === "1" || import.meta.env.VITE_USE_TURSO === "true";
+
+const LS_KEYS_USER = ["v2", "n2", "nn2", "m2"];
 
 async function lsGet(k) {
   try {
@@ -46,6 +48,13 @@ async function lsSet(k, v) {
     console.error(e);
   }
 }
+async function lsRemove(k) {
+  try {
+    localStorage.removeItem(k);
+  } catch {
+    /* ignore */
+  }
+}
 async function remoteGet(k) {
   const r = await fetch(`/api/kv/${encodeURIComponent(k)}`);
   if (!r.ok) throw new Error(`remote get ${r.status}`);
@@ -60,28 +69,29 @@ async function remoteSet(k, v) {
   if (!r.ok) throw new Error(`remote set ${r.status}`);
 }
 const store = {
+  /** Turso: คืน null = ฐานว่าง, undefined = เรียก API ไม่สำเร็จ — ไม่อ่าน localStorage */
   async get(k) {
     if (USE_TURSO) {
       try {
-        const data = await remoteGet(k);
-        if (data != null) await lsSet(k, data);
-        return data;
+        return await remoteGet(k);
       } catch (e) {
-        console.warn("Turso get fallback localStorage", e);
-        return lsGet(k);
+        console.warn("Turso get failed (ไม่อ่านจาก localStorage)", k, e);
+        return undefined;
       }
     }
     return lsGet(k);
   },
+  /** Turso: เขียนเฉพาะ API — ไม่ mirror ลง localStorage */
   async set(k, v) {
-    await lsSet(k, v);
     if (USE_TURSO) {
       try {
         await remoteSet(k, v);
       } catch (e) {
-        console.warn("Turso set failed (บันทึกในเครื่องแล้ว)", e);
+        console.warn("Turso set failed — ข้อมูลไม่ถูกบันทึกบนเซิร์ฟเวอร์", k, e);
       }
+      return;
     }
+    await lsSet(k, v);
   },
 };
 
@@ -534,6 +544,21 @@ function extractYoutubeVideoId(input) {
   return null;
 }
 
+/** ลิงก์สรุป (Google Doc / Google Drive) — คืน URL ที่ใช้ใน href ได้ หรือ "" */
+function normalizeGoogleDocOrDriveUrl(input) {
+  if (input == null) return "";
+  const s = String(input).trim();
+  if (!s) return "";
+  const withScheme = /^https?:\/\//i.test(s) ? s : `https://${s}`;
+  try {
+    const u = new URL(withScheme);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return "";
+    return u.href;
+  } catch {
+    return "";
+  }
+}
+
 /** แปลง tag สตริง: ข้อความธรรมดา | URL เต็ม | รูปแบบ ชื่อที่แสดง|https://... — ลิงก์ YouTube จะได้ type youtube + youtubeId สำหรับฝังเล่น */
 function parseVideoTag(raw) {
   const s = String(raw).trim();
@@ -791,11 +816,13 @@ export default function App(){
   const clearMmTarget=useCallback(()=>setMmTargetId(null),[]);
   const [theme,setTheme]=useState(()=>{ try{ return localStorage.getItem("ui_theme")==="light"?"light":"dark"; } catch { return "dark"; } });
   const [fontPct,setFontPct]=useState(()=>{ try{ const n=Number(localStorage.getItem("ui_font_pct")); return FONT_STEPS.includes(n)?n:100; } catch { return 100; } });
-  const [vids,setVids]=useState(INIT_VIDEOS);
-  const [nts,setNts]=useState(INIT_NOTES);
+  const [vids,setVids]=useState(USE_TURSO ? [] : INIT_VIDEOS);
+  const [nts,setNts]=useState(USE_TURSO ? [] : INIT_NOTES);
   const [nn,setNn]=useState({});
   const [appMeta,setAppMeta]=useState(() => ({ ...DEFAULT_APP_META }));
   const [ld,setLd]=useState(false);
+  /** Turso: ห้าม persist จนกว่าโหลดจาก API สำเร็จ — กันข้อมูลตัวอย่างใน bundle เขียนทับฐานข้อมูล */
+  const [persistOk,setPersistOk]=useState(!USE_TURSO);
   const [statuteByNum,setStatuteByNum]=useState(()=>({ ...statuteArticlesSeed }));
   const [statuteLoadState,setStatuteLoadState]=useState("idle");
   const tryUnlock=useCallback(()=>{
@@ -819,26 +846,56 @@ export default function App(){
   useEffect(()=>{
     if(!accessOk)return;
     (async()=>{
-      const a=await store.get("v2");
-      const b=await store.get("n2");
-      const c=await store.get("nn2");
-      const m=await store.get("m2");
-      if(a)setVids(a);
-      if(b)setNts(b);
-      if(c)setNn(c);
-      if(m&&typeof m==="object"){
-        setAppMeta({
-          title:String(m.title??DEFAULT_APP_META.title),
-          subtitle:String(m.subtitle??DEFAULT_APP_META.subtitle),
-        });
+      if(!USE_TURSO){
+        const a=await store.get("v2");
+        const b=await store.get("n2");
+        const c=await store.get("nn2");
+        const m=await store.get("m2");
+        if(a)setVids(a);
+        if(b)setNts(b);
+        if(c)setNn(c);
+        if(m&&typeof m==="object"){
+          setAppMeta({
+            title:String(m.title??DEFAULT_APP_META.title),
+            subtitle:String(m.subtitle??DEFAULT_APP_META.subtitle),
+          });
+        }
+        setPersistOk(true);
+        setLd(true);
+        return;
+      }
+      const [a,b,c,m]=await Promise.all([
+        store.get("v2"),
+        store.get("n2"),
+        store.get("nn2"),
+        store.get("m2"),
+      ]);
+      const failed=[a,b,c,m].some((x)=>x===undefined);
+      if(failed){
+        console.warn("Turso: โหลดข้อมูลผู้ใช้ไม่ครบ — ปิดการบันทึกอัตโนมัติจนกว่า API จะใช้ได้");
+        setPersistOk(false);
+      }else{
+        setVids(Array.isArray(a)?a:[]);
+        setNts(Array.isArray(b)?b:[]);
+        setNn(c!=null&&typeof c==="object"&&!Array.isArray(c)?c:{});
+        if(m!=null&&typeof m==="object"&&!Array.isArray(m)){
+          setAppMeta({
+            title:String(m.title??DEFAULT_APP_META.title),
+            subtitle:String(m.subtitle??DEFAULT_APP_META.subtitle),
+          });
+        }else{
+          setAppMeta({...DEFAULT_APP_META});
+        }
+        for(const k of LS_KEYS_USER)await lsRemove(k);
+        setPersistOk(true);
       }
       setLd(true);
     })();
   },[accessOk]);
-  useEffect(()=>{if(ld)store.set("v2",vids);},[vids,ld]);
-  useEffect(()=>{if(ld)store.set("n2",nts);},[nts,ld]);
-  useEffect(()=>{if(ld)store.set("nn2",nn);},[nn,ld]);
-  useEffect(()=>{if(ld)store.set("m2",appMeta);},[appMeta,ld]);
+  useEffect(()=>{if(ld&&persistOk)store.set("v2",vids);},[vids,ld,persistOk]);
+  useEffect(()=>{if(ld&&persistOk)store.set("n2",nts);},[nts,ld,persistOk]);
+  useEffect(()=>{if(ld&&persistOk)store.set("nn2",nn);},[nn,ld,persistOk]);
+  useEffect(()=>{if(ld&&persistOk)store.set("m2",appMeta);},[appMeta,ld,persistOk]);
   useEffect(()=>{
     if(!accessOk)return;
     let cancelled=false;
@@ -900,7 +957,7 @@ export default function App(){
 {tab==="youtube"&&<YTV vids={vids} setVids={setVids}/>}
 {tab==="lectures"&&<LV nts={nts} setNts={setNts} sections={SECTIONS} isDark={theme==="dark"}/>}
 {tab==="search"&&<SV sections={SECTIONS} vids={vids} nts={nts} onOpenMindMap={(id)=>{setMmTargetId(id);setTab("mindmap");}} statuteByNum={statuteByNum} statuteLoadState={statuteLoadState}/>}
-{tab==="settings"&&<SettingsV vids={vids} setVids={setVids} appMeta={appMeta} setAppMeta={setAppMeta}/>}
+{tab==="settings"&&<SettingsV vids={vids} setVids={setVids} appMeta={appMeta} setAppMeta={setAppMeta} dataReady={ld} persistOk={persistOk}/>}
 </main></div>);
 }
 
@@ -1064,14 +1121,102 @@ aria-expanded={detailPanelFs}
 <div className="p-5 border-b border-zinc-200 dark:border-zinc-800/40"><h4 className="text-sm font-semibold text-amber-400 mb-3 flex items-center gap-2"><MessageSquare size={14}/>บันทึกส่วนตัว ({(nn[sel.id]||[]).length})</h4>
 <div className="space-y-2 max-h-40 overflow-y-auto mb-3">{(nn[sel.id]||[]).map(n=><div key={n.id} className="bg-zinc-200/90 dark:bg-zinc-800/50 rounded-lg p-3 text-sm text-zinc-400 dark:text-zinc-300 group relative">{n.text}<button onClick={()=>delN(sel.id,n.id)} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-zinc-500 dark:text-zinc-500 hover:text-red-400"><X size={14}/></button></div>)}</div>
 <div className="flex gap-2"><input value={nt} onChange={e=>setNt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addN()} placeholder="พิมพ์บันทึก..." className="flex-1 bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none focus:border-amber-500/50"/><button onClick={addN} className="px-3 py-2 bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30"><Plus size={16}/></button></div></div>
-{rv.length>0&&<div className="p-5 border-b border-zinc-200 dark:border-zinc-800/40"><h4 className="text-sm font-semibold text-red-400 mb-3 flex items-center gap-2"><Youtube size={14}/>วิดีโอที่เกี่ยวข้อง ({rv.length})</h4><div className="space-y-2">{rv.slice(0,3).map(v=><div key={v.id} className="flex items-center gap-2 p-2 rounded-lg bg-zinc-200/70 dark:bg-zinc-800/30 text-sm"><PlayCircle size={14} className="text-red-400 flex-shrink-0"/><span className="text-zinc-400 dark:text-zinc-300 truncate">{v.title}</span></div>)}</div></div>}
+{rv.length>0&&<div className="p-5 border-b border-zinc-200 dark:border-zinc-800/40"><h4 className="text-sm font-semibold text-red-400 mb-3 flex items-center gap-2"><Youtube size={14}/>วิดีโอที่เกี่ยวข้อง ({rv.length})</h4><div className="space-y-2">{rv.slice(0,3).map((v)=>{const du=normalizeGoogleDocOrDriveUrl(v.googleDocUrl);return(
+<div key={v.id} className="flex flex-col gap-1.5 p-2 rounded-lg bg-zinc-200/70 dark:bg-zinc-800/30 text-sm"><div className="flex items-center gap-2 min-w-0"><PlayCircle size={14} className="text-red-400 flex-shrink-0"/><span className="text-zinc-400 dark:text-zinc-300 truncate">{v.title}</span></div>{du&&<a href={du} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 pl-6 text-[11px] font-medium text-blue-600 hover:underline dark:text-blue-400"><FileText size={12} aria-hidden/>สรุป (Google Doc / Drive)</a>}</div>
+);})}</div></div>}
 {rn.length>0&&<div className="p-5"><h4 className="text-sm font-semibold text-blue-400 mb-3 flex items-center gap-2"><FileText size={14}/>สรุป Lecture ({rn.length})</h4>{rn.map(n=><div key={n.id} className="p-2 rounded-lg bg-zinc-200/70 dark:bg-zinc-800/30 text-sm text-zinc-400 dark:text-zinc-300">{n.title}</div>)}</div>}
 </div>):(
 <div className="sticky top-36 bg-zinc-200/65 dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800/30 rounded-2xl p-8 text-center"><Map size={40} className="text-zinc-400 dark:text-zinc-700 mx-auto mb-3"/><p className="text-sm text-zinc-500 dark:text-zinc-500">เลือกมาตรา/หมวด/ลักษณะ<br/>จากแผนผังด้านซ้าย<br/>เพื่อดูรายละเอียดและเพิ่มบันทึก</p></div>
 )}</div></div>);
 }
 
-function SettingsV({ vids, setVids, appMeta, setAppMeta }) {
+function StorageBackendBanner({ dataReady, persistOk }) {
+  const [api, setApi] = useState("idle");
+  useEffect(() => {
+    if (!USE_TURSO) return;
+    let cancelled = false;
+    setApi("checking");
+    fetch("/api/kv/v2")
+      .then((r) => {
+        if (cancelled) return;
+        if (r.status === 503) setApi("no_config");
+        else if (r.ok) setApi("ok");
+        else setApi("error");
+      })
+      .catch(() => {
+        if (!cancelled) setApi("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const code = (s) => (
+    <code className="rounded bg-zinc-200/90 px-1 py-0.5 text-[11px] text-zinc-800 dark:bg-zinc-800/80 dark:text-zinc-200">{s}</code>
+  );
+  if (USE_TURSO && dataReady && !persistOk) {
+    return (
+      <div className="mb-8 rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-900 dark:text-red-200/95 leading-relaxed">
+        <p className="mb-1 font-semibold">Turso — โหลดข้อมูลผู้ใช้ไม่สำเร็จ</p>
+        <p className="text-xs opacity-90">
+          แอปจะไม่บันทึกการแก้ไขขึ้นเซิร์ฟเวอร์จนกว่า {code("/api/kv/*")} จะตอบได้ครบทุกคีย์ — ตรวจ {code("pages:dev")} + proxy, หรือ env บน Cloudflare
+        </p>
+      </div>
+    );
+  }
+  if (!USE_TURSO) {
+    return (
+      <div className="mb-8 rounded-2xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/40 p-4 text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
+        <p className="mb-1 font-semibold text-zinc-800 dark:text-zinc-200">ที่เก็บข้อมูล (รายการ YouTube, Lecture, บันทึก Mind Map, หัวเว็บ)</p>
+        <p className="mb-2">
+          ตอนนี้ใช้ <span className="font-medium text-zinc-900 dark:text-zinc-100">localStorage</span> ในเบราว์เซอร์เครื่องนี้เท่านั้น — โปรเจกต์มีการซิงก์ <span className="font-medium text-zinc-900 dark:text-zinc-100">Turso</span> ไว้แล้ว แต่ปิดเป็นค่าเริ่มต้น จึงไม่เห็นการเชื่อม cloud
+        </p>
+        <p className="text-xs text-zinc-500 dark:text-zinc-500">
+          เปิด Turso: สร้างไฟล์ {code(".env")} จาก {code(".env.example")} แล้วตั้ง {code("VITE_USE_TURSO=1")} · รัน {code("npm run pages:dev")} (พอร์ต 8788) คู่กับ {code("npm run dev")} เพื่อให้ proxy {code("/api")} ไปถึง Cloudflare Functions · ใส่ {code("TURSO_DATABASE_URL")} และ {code("TURSO_AUTH_TOKEN")} ใน {code(".dev.vars")} ตาม README · บน Cloudflare Pages ตั้ง env / secret แบบเดียวกัน
+        </p>
+      </div>
+    );
+  }
+  const box = (cls, title, body) => (
+    <div className={`mb-8 rounded-2xl border p-4 text-sm leading-relaxed ${cls}`}>
+      <p className="mb-1 font-semibold">{title}</p>
+      {body}
+    </div>
+  );
+  if (api === "checking") {
+    return box(
+      "border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-200/95",
+      "Turso — กำลังทดสอบ API",
+      <p className="text-xs opacity-90">เรียก {code("/api/kv/v2")} …</p>
+    );
+  }
+  if (api === "ok") {
+    return box(
+      "border-emerald-500/35 bg-emerald-500/10 text-emerald-900 dark:text-emerald-200/95",
+      "Turso — เชื่อม API ได้",
+      <p className="text-xs opacity-90">
+        โหมด Turso: อ่าน/เขียนเฉพาะ API (คีย์ {code("v2")} {code("n2")} {code("nn2")} {code("m2")}) — ไม่ใช้ localStorage เป็นที่เก็บหลัก
+      </p>
+    );
+  }
+  if (api === "no_config") {
+    return box(
+      "border-amber-500/35 bg-amber-500/10 text-amber-950 dark:text-amber-200/90",
+      "Turso — ยังไม่ตั้งค่าฐานข้อมูลบน Functions",
+      <p className="text-xs opacity-90">
+        ได้ยิง API แล้วแต่ได้ 503 — ใส่ {code("TURSO_DATABASE_URL")} และ {code("TURSO_AUTH_TOKEN")} ใน {code(".dev.vars")} (ท้องถิ่น) หรือ Secrets บน Cloudflare
+      </p>
+    );
+  }
+  return box(
+    "border-red-500/30 bg-red-500/10 text-red-900 dark:text-red-200/90",
+    "Turso — เรียก /api ไม่สำเร็จ",
+    <p className="text-xs opacity-90">
+      มักเกิดเมื่อรันแค่ {code("npm run dev")} โดยไม่มี Functions ที่พอร์ต 8788 — เปิดอีกเทอร์มินัลรัน {code("npm run pages:dev")} หรือตรวจว่า {code("vite.config.js")} proxy {code("/api")} ชี้ไปถูกต้อง
+    </p>
+  );
+}
+
+function SettingsV({ vids, setVids, appMeta, setAppMeta, dataReady, persistOk }) {
   const uv = (id, u) => setVids(vids.map((x) => (x.id === id ? { ...x, ...u } : x)));
   const dv = (id) => {
     if (!confirm("ลบวิดีโอรายการนี้?")) return;
@@ -1083,7 +1228,8 @@ function SettingsV({ vids, setVids, appMeta, setAppMeta }) {
         <Settings size={20} className="text-amber-500" />
         ตั้งค่า
       </h2>
-      <p className="text-sm text-zinc-500 dark:text-zinc-500 mb-6">แก้ข้อความหัวเว็บ และแก้ชื่อวิดีโอ / ช่อง / tag ที่คุณใส่เอง / Video ID — บันทึกอัตโนมัติ</p>
+      <p className="text-sm text-zinc-500 dark:text-zinc-500 mb-4">แก้ข้อความหัวเว็บ และแก้ชื่อวิดีโอ / ช่อง / tag ที่คุณใส่เอง / Video ID — บันทึกอัตโนมัติ</p>
+      <StorageBackendBanner dataReady={dataReady} persistOk={persistOk} />
       <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800/60 bg-zinc-100/90 dark:bg-zinc-900/50 p-5 mb-8">
         <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 mb-3 flex items-center gap-2">
           <Tag size={14} className="text-amber-500" />
@@ -1155,6 +1301,19 @@ function SettingsV({ vids, setVids, appMeta, setAppMeta }) {
               />
             </div>
             <div>
+              <label className="block text-xs text-zinc-500 dark:text-zinc-500 mb-1">ลิงก์สรุป Google Doc / Drive (ไม่บังคับ)</label>
+              <input
+                value={v.googleDocUrl ?? ""}
+                onChange={(e) => uv(v.id, { googleDocUrl: e.target.value })}
+                onBlur={(e) => {
+                  const n = normalizeGoogleDocOrDriveUrl(e.target.value);
+                  uv(v.id, { googleDocUrl: n || e.target.value.trim() });
+                }}
+                placeholder="https://docs.google.com/document/d/... หรือ drive.google.com/..."
+                className="w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800/60 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 outline-none focus:border-amber-500/50"
+              />
+            </div>
+            <div>
               <label className="block text-xs text-zinc-500 dark:text-zinc-500 mb-1">Tag (พิมพ์เอง คั่นด้วย comma)</label>
               <textarea
                 value={v.tags.join(", ")}
@@ -1219,15 +1378,22 @@ function TN({n,d,ex,tog,sel,setSel,nn}){
 }
 
 function YTV({vids,setVids}){
-  const [q,setQ]=useState("");const [ft,setFt]=useState("");const [fs,setFs]=useState("");const [sa,setSa]=useState(false);
+  const [q,setQ]=useState("");const [ft,setFt]=useState("");const [fs,setFs]=useState("");const [sa,setSa]=useState(false);const [playId,setPlayId]=useState(null);
   const at=[...new Set(vids.flatMap(v=>v.tags))].sort();
   const ql=q.trim().toLowerCase();
   const fl=vids.filter(v=>{
-    if(ql&&!v.title.toLowerCase().includes(ql)&&!v.channel.toLowerCase().includes(ql)&&!v.tags.some(t=>tagMatchesQuery(t,ql)))return false;
+    if(ql){
+      const g=normalizeGoogleDocOrDriveUrl(v.googleDocUrl);
+      const inDoc=g&&g.toLowerCase().includes(ql);
+      if(!v.title.toLowerCase().includes(ql)&&!v.channel.toLowerCase().includes(ql)&&!v.tags.some(t=>tagMatchesQuery(t,ql))&&!inDoc)return false;
+    }
     if(ft&&!v.tags.includes(ft))return false;
     if(fs&&v.status!==fs)return false;
     return true;
   });
+  useEffect(()=>{
+    if(playId&&!fl.some((v)=>v.id===playId))setPlayId(null);
+  },[fl,playId]);
   const uv=(id,u)=>setVids(vids.map(v=>v.id===id?{...v,...u}:v));
   const dv=id=>setVids(vids.filter(v=>v.id!==id));
   const av=v=>{setVids([v,...vids]);setSa(false);};
@@ -1237,21 +1403,28 @@ function YTV({vids,setVids}){
 <div className="flex flex-wrap gap-3 mb-5"><div className="flex-1 min-w-[200px] relative"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 dark:text-zinc-500"/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="ค้นหาวิดีโอ..." className="w-full bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 rounded-xl pl-10 pr-4 py-2.5 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none focus:border-amber-500/50"/></div>
 <select value={ft} onChange={e=>setFt(e.target.value)} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-zinc-400 dark:text-zinc-300 outline-none"><option value="">ทุก Tag</option>{at.map(t=><option key={t} value={t}>{tagDisplayLabel(t)}</option>)}</select>
 <select value={fs} onChange={e=>setFs(e.target.value)} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-zinc-400 dark:text-zinc-300 outline-none"><option value="">ทุกสถานะ</option><option value="unwatched">ยังไม่ดู</option><option value="watching">กำลังดู</option><option value="watched">ดูแล้ว</option></select></div>
-<div className="grid grid-cols-1 md:grid-cols-2 gap-4">{fl.map(v=>{const I=SI[v.status];const yidCard=extractYoutubeVideoId(v.youtubeId);const watchUrl=yidCard?`https://www.youtube.com/watch?v=${encodeURIComponent(yidCard)}`:null;return(
+<div className="grid grid-cols-1 md:grid-cols-2 gap-4">{fl.map(v=>{const I=SI[v.status];const yidCard=extractYoutubeVideoId(v.youtubeId);const watchUrl=yidCard?`https://www.youtube.com/watch?v=${encodeURIComponent(yidCard)}`:null;const embedUrl=yidCard?`https://www.youtube.com/embed/${encodeURIComponent(yidCard)}?rel=0`:null;const playing=playId===v.id;const docUrl=normalizeGoogleDocOrDriveUrl(v.googleDocUrl);return(
 <div key={v.id} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/40 rounded-2xl overflow-hidden hover:border-zinc-300 dark:border-zinc-700/60 transition-all group">
 <div className="relative">
-{watchUrl?(
-<a href={watchUrl} target="_blank" rel="noopener noreferrer" className="block aspect-video bg-zinc-200 dark:bg-zinc-800 relative outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-inset" aria-label={`เปิดวิดีโอใน YouTube — ${v.title}`}>
+{watchUrl&&embedUrl&&playing?(
+<div className="relative aspect-video w-full bg-black">
+<iframe className="absolute inset-0 h-full w-full border-0" src={embedUrl} title={v.title} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen referrerPolicy="strict-origin-when-cross-origin"/>
+<button type="button" onClick={()=>setPlayId(null)} className="absolute left-2 top-2 z-10 rounded-lg bg-black/70 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-black/85">ปิดตัวเล่น</button>
+</div>
+):watchUrl?(
+<button type="button" onClick={()=>setPlayId(v.id)} className="relative block aspect-video w-full cursor-pointer bg-zinc-200 dark:bg-zinc-800 outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-inset" aria-label={`เล่น ${v.title} ในเว็บ`}>
 <img src={`https://img.youtube.com/vi/${yidCard}/mqdefault.jpg`} alt="" className="h-full w-full object-cover opacity-90" onError={e=>{e.target.style.display="none";}}/>
 <div className="absolute inset-0 flex items-center justify-center bg-black/25 transition-colors group-hover:bg-black/35"><PlayCircle size={48} className="text-white drop-shadow-md"/></div>
-</a>
+<span className="absolute bottom-2 left-2 rounded bg-black/55 px-2 py-0.5 text-[10px] font-medium text-white/95">เล่นในเว็บ</span>
+</button>
 ):(
 <div className="flex aspect-video items-center justify-center bg-zinc-200 dark:bg-zinc-800"><p className="px-4 text-center text-xs text-zinc-500 dark:text-zinc-500">ใส่ลิงก์หรือ Video ID ที่ถูกต้อง (11 ตัว) ในตั้งค่า — ตัวอย่าง SAMPLE_* เปิดไม่ได้</p></div>
 )}
 <button type="button" onClick={(e)=>{e.preventDefault();e.stopPropagation();uv(v.id,{favorite:!v.favorite});}} className="absolute top-3 right-3 z-10 rounded-lg bg-black/40 p-1 hover:bg-black/55" aria-label="ติดดาว"><Star size={20} className={v.favorite?"text-amber-400 fill-amber-400":"text-white/90"}/></button>
 </div>
 <div className="p-4"><h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 leading-snug mb-1 line-clamp-2">{v.title}</h3><p className="text-xs text-zinc-500 dark:text-zinc-500 mb-2">{v.channel}</p>
-{watchUrl&&<a href={watchUrl} target="_blank" rel="noopener noreferrer" className="mb-3 inline-flex items-center gap-1 text-xs font-medium text-red-600 hover:underline dark:text-red-400"><ExternalLink size={12} aria-hidden/>เปิดใน YouTube</a>}
+{watchUrl&&<div className="mb-3 flex flex-wrap gap-x-3 gap-y-1">{playing?null:<button type="button" onClick={()=>setPlayId(v.id)} className="inline-flex items-center gap-1 text-xs font-medium text-red-600 hover:underline dark:text-red-400"><PlayCircle size={12} aria-hidden/>เล่นในเว็บ</button>}<a href={watchUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-zinc-600 hover:underline dark:text-zinc-400"><ExternalLink size={12} aria-hidden/>เปิดใน YouTube</a></div>}
+{docUrl&&<div className="mb-3"><a href={docUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"><FileText size={12} aria-hidden/>สรุป (Google Doc / Drive)</a></div>}
 <div className="flex flex-wrap gap-1.5 mb-3">{v.tags.map((t,i)=><VideoTagChip key={`${v.id}-tag-${i}`} raw={t}/>)}</div>
 <div className="flex items-center justify-between"><button onClick={()=>{const nx=v.status==="unwatched"?"watching":v.status==="watching"?"watched":"unwatched";uv(v.id,{status:nx});}} className={`flex items-center gap-1.5 text-xs ${SC[v.status]}`}><I size={14}/>{v.status==="unwatched"?"ยังไม่ดู":v.status==="watching"?"กำลังดู":"ดูแล้ว"}</button>
 <div className="flex gap-1.5"><span className="text-xs text-amber-400">{"★".repeat(v.rating)}{"☆".repeat(5-v.rating)}</span><button onClick={()=>dv(v.id)} className="text-zinc-500 dark:text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100"><Trash2 size={14}/></button></div></div></div></div>);})}</div>
@@ -1259,14 +1432,15 @@ function YTV({vids,setVids}){
 }
 
 function AVF({onAdd,onCancel}){
-  const [f,sF]=useState({youtubeId:"",title:"",channel:"",tags:"",rating:4});
+  const [f,sF]=useState({youtubeId:"",title:"",channel:"",googleDocUrl:"",tags:"",rating:4});
   return(<div className="bg-white/95 dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-2xl p-5 mb-5"><h3 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 mb-4">เพิ่มวิดีโอใหม่</h3>
 <div className="grid grid-cols-2 gap-3 mb-3"><input value={f.youtubeId} onChange={e=>sF({...f,youtubeId:e.target.value})} onBlur={e=>{const y=extractYoutubeVideoId(e.target.value);if(y)sF({...f,youtubeId:y});}} placeholder="ลิงก์ youtu.be/... หรือ ID" className="bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none"/><input value={f.channel} onChange={e=>sF({...f,channel:e.target.value})} placeholder="Channel" className="bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none"/></div>
 <input value={f.title} onChange={e=>sF({...f,title:e.target.value})} placeholder="ชื่อวิดีโอ *" className="w-full bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none mb-3"/>
+<input value={f.googleDocUrl} onChange={e=>sF({...f,googleDocUrl:e.target.value})} onBlur={e=>{const n=normalizeGoogleDocOrDriveUrl(e.target.value);if(n)sF({...f,googleDocUrl:n});}} placeholder="ลิงก์สรุป Google Doc / Drive (ไม่บังคับ)" className="w-full bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none mb-3"/>
 <input value={f.tags} onChange={e=>sF({...f,tags:e.target.value})} placeholder="Tag — พิมพ์เอง คั่นแต่ละอันด้วย comma" className="w-full bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none mb-3"/>
-<p className="text-[11px] text-zinc-500 dark:text-zinc-500 mb-3 leading-relaxed">Tag: วางลิงก์ YouTube เต็มๆ (เช่น youtu.be/...) จะฝังตัวเล่นในหน้าการ์ด — หรือใช้ ชื่อที่แสดง|URL สำหรับลิงก์ทั่วไป (คั่นหลาย tag ด้วย comma)</p>
+<p className="text-[11px] text-zinc-500 dark:text-zinc-500 mb-3 leading-relaxed">ลิงก์สรุป: วางลิงก์แชร์จาก Google Docs หรือไฟล์ใน Drive (เปิดแท็บใหม่) · Tag: วางลิงก์ YouTube เต็มๆ (เช่น youtu.be/...) จะฝังตัวเล่นในหน้าการ์ด — หรือใช้ ชื่อที่แสดง|URL สำหรับลิงก์ทั่วไป (คั่นหลาย tag ด้วย comma)</p>
 <div className="flex items-center gap-3 mb-4"><span className="text-xs text-zinc-500 dark:text-zinc-500">คะแนน:</span>{[1,2,3,4,5].map(r=><button key={r} onClick={()=>sF({...f,rating:r})} className={`text-lg ${r<=f.rating?"text-amber-400":"text-zinc-500 dark:text-zinc-600"}`}>★</button>)}</div>
-<div className="flex gap-2 justify-end"><button onClick={onCancel} className="px-4 py-2 text-sm text-zinc-500 dark:text-zinc-400">ยกเลิก</button><button onClick={()=>{if(!f.title.trim())return;const raw=String(f.youtubeId).trim();const yid=extractYoutubeVideoId(raw);onAdd({id:"v"+Date.now(),youtubeId:yid||raw||"dQw4w9WgXcQ",title:f.title,channel:f.channel,tags:f.tags.split(",").map(t=>t.trim()).filter(Boolean),rating:f.rating,status:"unwatched",favorite:false});}} className="px-4 py-2 bg-red-500/20 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/30 border border-red-500/20">บันทึก</button></div></div>);
+<div className="flex gap-2 justify-end"><button onClick={onCancel} className="px-4 py-2 text-sm text-zinc-500 dark:text-zinc-400">ยกเลิก</button><button onClick={()=>{if(!f.title.trim())return;const raw=String(f.youtubeId).trim();const yid=extractYoutubeVideoId(raw);const gdu=normalizeGoogleDocOrDriveUrl(f.googleDocUrl);onAdd({id:"v"+Date.now(),youtubeId:yid||raw||"dQw4w9WgXcQ",title:f.title,channel:f.channel,googleDocUrl:gdu||"",tags:f.tags.split(",").map(t=>t.trim()).filter(Boolean),rating:f.rating,status:"unwatched",favorite:false});}} className="px-4 py-2 bg-red-500/20 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/30 border border-red-500/20">บันทึก</button></div></div>);
 }
 
 function LV({nts,setNts,sections,isDark}){
@@ -1369,7 +1543,11 @@ function SV({sections,vids,nts,onOpenMindMap,statuteByNum,statuteLoadState}){
       }
     }
   }
-  const vr=ql?vids.filter(v=>v.title.toLowerCase().includes(ql)||v.tags.some(t=>tagMatchesQuery(t,ql))):[];
+  const vr=ql?vids.filter((v)=>{
+    if(v.title.toLowerCase().includes(ql)||v.tags.some(t=>tagMatchesQuery(t,ql)))return true;
+    const g=normalizeGoogleDocOrDriveUrl(v.googleDocUrl);
+    return g&&g.toLowerCase().includes(ql);
+  }):[];
   const nr=ql?nts.filter(n=>n.title.toLowerCase().includes(ql)||n.content.toLowerCase().includes(ql)):[];
   const tot=sr.length+vr.length+nr.length;
   const qPdfPage = qArticle != null ? pdfPageForArticle(qArticle) : null;
@@ -1461,10 +1639,10 @@ statuteLoadState === "loading" ? (
 {pg!=null&&<a href={criminalLawPdfUrl(pg)} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()} className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 dark:text-sky-300 hover:underline"><ExternalLink size={12} aria-hidden />PDF หน้า {pg}</a>}
 {mmHint("เปิดใน Mind Map")}</div>
 );})}</div></div>}
-{vr.length>0&&<div className="mb-6"><h3 className="text-sm font-semibold text-red-400 mb-3 flex items-center gap-2"><Youtube size={14}/>วิดีโอ ({vr.length})</h3><div className="space-y-2">{vr.map(v=>{const sec=findSectionForVideoTags(v.tags,sections);const vpg=sec?.num!=null?pdfPageForArticle(sec.num):null;return(
+{vr.length>0&&<div className="mb-6"><h3 className="text-sm font-semibold text-red-400 mb-3 flex items-center gap-2"><Youtube size={14}/>วิดีโอ ({vr.length})</h3><div className="space-y-2">{vr.map(v=>{const sec=findSectionForVideoTags(v.tags,sections);const vpg=sec?.num!=null?pdfPageForArticle(sec.num):null;const vdoc=normalizeGoogleDocOrDriveUrl(v.googleDocUrl);return(
 <div key={v.id} role="button" tabIndex={0} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();onOpenMindMap(sec?.id??null);}}} onClick={()=>onOpenMindMap(sec?.id??null)} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/40 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3 hover:border-amber-600/50 dark:hover:border-amber-500/35 cursor-pointer transition-all text-left w-full">
 <div className="flex items-center gap-3 flex-1 min-w-0"><PlayCircle size={20} className="text-red-400 flex-shrink-0"/><div className="flex-1 min-w-0"><p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate">{v.title}</p><p className="text-xs text-zinc-500 dark:text-zinc-500">{v.channel} • {v.tags.map(tagDisplayLabel).join(", ")}</p></div></div>
-{vpg!=null&&<a href={criminalLawPdfUrl(vpg)} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()} className="inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 dark:text-sky-300 hover:underline sm:ml-auto"><ExternalLink size={12} aria-hidden />PDF ม.{sec.num} หน้า {vpg}</a>}
+<div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:justify-end">{vdoc&&<a href={vdoc} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()} className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:underline dark:text-blue-400"><FileText size={12} aria-hidden />สรุป Doc</a>}{vpg!=null&&<a href={criminalLawPdfUrl(vpg)} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()} className="inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 dark:text-sky-300 hover:underline"><ExternalLink size={12} aria-hidden />PDF ม.{sec.num} หน้า {vpg}</a>}</div>
 {mmHint(sec?"ไปมาตราที่เกี่ยวข้องใน Mind Map":"เปิด Mind Map (ใส่ tag ที่มีเลขมาตราในวิดีโอเพื่อโฟกัส)")}</div>);})}</div></div>}
 {nr.length>0&&<div className="mb-6"><h3 className="text-sm font-semibold text-blue-400 mb-3 flex items-center gap-2"><FileText size={14}/>Lecture Notes ({nr.length})</h3><div className="space-y-2">{nr.map(n=>{const sn=n.sectionId?findNodeById(sections,n.sectionId):null;const npg=sn?.type==="section"&&sn.num!=null?pdfPageForArticle(sn.num):null;return(
 <div key={n.id} role="button" tabIndex={0} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();onOpenMindMap(n.sectionId||null);}}} onClick={()=>onOpenMindMap(n.sectionId||null)} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/40 rounded-xl p-4 hover:border-amber-600/50 dark:hover:border-amber-500/35 cursor-pointer transition-all text-left w-full">

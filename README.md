@@ -208,8 +208,8 @@ criminal-law-frontend/
 
 ## 🔌 Turso + Cloudflare Pages (sync ข้อมูลข้ามเครื่อง)
 
-แอปเก็บข้อมูลผู้ใช้ที่ key `v2` (วิดีโอ), `n2` (lecture notes), `nn2` (บันทึก mind map) — โดยค่าเริ่มต้นใช้ **localStorage**  
-ถ้าเปิด **`VITE_USE_TURSO=1`** ตอน build จะอ่าน/เขียนผ่าน **Pages Functions** ไปที่ **Turso** (credential อยู่ฝั่ง Cloudflare เท่านั้น ไม่โผล่ใน bundle)
+แอปเก็บข้อมูลผู้ใช้ที่ key `v2` (วิดีโอ YouTube), `n2` (lecture notes), `nn2` (บันทึก mind map), `m2` (หัวเว็บ) — โดยค่าเริ่มต้นใช้ **localStorage**  
+ถ้าเปิด **`VITE_USE_TURSO=1`** ตอน build จะอ่าน/เขียน **เฉพาะ Turso ผ่าน `/api/kv/*`** (ไม่ fallback ไป localStorage, ไม่เขียนเครื่องก่อน) — ฐานว่างจะได้รายการว่าง ไม่ใช่ข้อมูลตัวอย่างใน bundle · หลังโหลดสำเร็จแอปจะล้างคีย์ `v2`/`n2`/`nn2`/`m2` ใน localStorage เก่า (กันสับสนกับข้อมูลก่อนเปิด Turso)
 
 ### 1) สร้างฐานข้อมูล Turso + schema
 
@@ -219,6 +219,8 @@ turso db create thai-criminal-law
 turso db tokens create thai-criminal-law
 turso db shell thai-criminal-law < turso/schema.sql
 ```
+
+**ถ้า `GET /api/kv/v2` ได้ 500 และ log ว่า `no such table: app_kv`** แปลว่ายังไม่ได้รัน `schema.sql` กับ DB นั้น — ใช้ชื่อ DB จริงของคุณแทน `thai-criminal-law` เช่น `turso db list` แล้วรัน `turso db shell <ชื่อ-db> < turso/schema.sql` อีกครั้ง
 
 เก็บค่า **URL** (`libsql://...`) และ **token** ไว้ใส่ Cloudflare
 
@@ -251,6 +253,9 @@ npm run pages:dev
 ```
 
 อีกเทอร์มินัลรัน `npm run dev` — Vite จะ proxy `/api` ไปที่ `localhost:8788`
+
+**ตรวจว่า API ตอบได้:** ขณะที่ `pages:dev` รันอยู่ เปิดเทอร์มินัลใหม่แล้วรัน `npm run check:turso` — ควรได้ HTTP 200  
+ถ้า deploy บน Cloudflare แล้ว ให้ชี้ไปโดเมนจริง เช่น `set CHECK_TURSO_URL=https://ชื่อโปรเจกต์.pages.dev` แล้วรัน `npm run check:turso` (Windows PowerShell: `$env:CHECK_TURSO_URL="https://..."; npm run check:turso`)
 
 **ความปลอดภัย:** endpoint `/api/kv/*` ไม่มี login — ใครรู้ URL ก็อ่าน/เขียนชุดข้อมูลเดียวกันได้ ถ้าเป็น production แนะนำใส่ **Cloudflare Access** หน้าเว็บ (ดูด้านล่าง)
 

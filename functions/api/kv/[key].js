@@ -1,6 +1,6 @@
 import { createClient } from "@libsql/client";
 
-const ALLOWED_KEYS = new Set(["v2", "n2", "nn2"]);
+const ALLOWED_KEYS = new Set(["v2", "n2", "nn2", "m2"]);
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {

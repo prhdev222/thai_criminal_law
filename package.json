@@ -9,6 +9,7 @@
     "extract-statutes": "python scripts/extract-statute-articles.py",
     "preview": "vite preview",
     "pages:dev": "npm run build && wrangler pages dev dist",
+    "check:turso": "node scripts/check-turso.mjs",
     "deploy": "vite build && wrangler pages deploy dist"
   },
   "dependencies": {
