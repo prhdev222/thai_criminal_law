@@ -68,6 +68,14 @@ async function remoteSet(k, v) {
   });
   if (!r.ok) throw new Error(`remote set ${r.status}`);
 }
+/** โหลด v2/n2/nn2/m2 ในคำขอเดียว — ลดความล้มจากเรียก /api/kv/* พร้อมกัน 4 ทาง */
+async function fetchTursoUserBundle() {
+  const r = await fetch("/api/user-data");
+  if (!r.ok) throw new Error(`user-data ${r.status}`);
+  const j = await r.json();
+  if (j && typeof j === "object" && j.error) throw new Error(String(j.error));
+  return j;
+}
 const store = {
   /** Turso: คืน null = ฐานว่าง, undefined = เรียก API ไม่สำเร็จ — ไม่อ่าน localStorage */
   async get(k) {
@@ -823,6 +831,7 @@ export default function App(){
   const [ld,setLd]=useState(false);
   /** Turso: ห้าม persist จนกว่าโหลดจาก API สำเร็จ — กันข้อมูลตัวอย่างใน bundle เขียนทับฐานข้อมูล */
   const [persistOk,setPersistOk]=useState(!USE_TURSO);
+  const [tursoLoadTick,setTursoLoadTick]=useState(0);
   const [statuteByNum,setStatuteByNum]=useState(()=>({ ...statuteArticlesSeed }));
   const [statuteLoadState,setStatuteLoadState]=useState("idle");
   const tryUnlock=useCallback(()=>{
@@ -845,6 +854,7 @@ export default function App(){
   },[fontPct]);
   useEffect(()=>{
     if(!accessOk)return;
+    let cancelled=false;
     (async()=>{
       if(!USE_TURSO){
         const a=await store.get("v2");
@@ -864,34 +874,44 @@ export default function App(){
         setLd(true);
         return;
       }
-      const [a,b,c,m]=await Promise.all([
-        store.get("v2"),
-        store.get("n2"),
-        store.get("nn2"),
-        store.get("m2"),
-      ]);
-      const failed=[a,b,c,m].some((x)=>x===undefined);
-      if(failed){
-        console.warn("Turso: โหลดข้อมูลผู้ใช้ไม่ครบ — ปิดการบันทึกอัตโนมัติจนกว่า API จะใช้ได้");
-        setPersistOk(false);
-      }else{
-        setVids(Array.isArray(a)?a:[]);
-        setNts(Array.isArray(b)?b:[]);
-        setNn(c!=null&&typeof c==="object"&&!Array.isArray(c)?c:{});
-        if(m!=null&&typeof m==="object"&&!Array.isArray(m)){
-          setAppMeta({
-            title:String(m.title??DEFAULT_APP_META.title),
-            subtitle:String(m.subtitle??DEFAULT_APP_META.subtitle),
-          });
-        }else{
-          setAppMeta({...DEFAULT_APP_META});
+      let bundle=null;
+      for(let attempt=0;attempt<3;attempt++){
+        if(cancelled)return;
+        try{
+          bundle=await fetchTursoUserBundle();
+          break;
+        }catch(e){
+          console.warn("Turso user-data attempt",attempt+1,e);
+          if(attempt===2){
+            if(!cancelled)setPersistOk(false);
+            if(!cancelled)setLd(true);
+            return;
+          }
+          await new Promise((res)=>setTimeout(res,350*(attempt+1)));
         }
-        for(const k of LS_KEYS_USER)await lsRemove(k);
-        setPersistOk(true);
       }
-      setLd(true);
+      if(cancelled||!bundle)return;
+      const a=bundle.v2;
+      const b=bundle.n2;
+      const c=bundle.nn2;
+      const m=bundle.m2;
+      setVids(Array.isArray(a)?a:[]);
+      setNts(Array.isArray(b)?b:[]);
+      setNn(c!=null&&typeof c==="object"&&!Array.isArray(c)?c:{});
+      if(m!=null&&typeof m==="object"&&!Array.isArray(m)){
+        setAppMeta({
+          title:String(m.title??DEFAULT_APP_META.title),
+          subtitle:String(m.subtitle??DEFAULT_APP_META.subtitle),
+        });
+      }else{
+        setAppMeta({...DEFAULT_APP_META});
+      }
+      for(const k of LS_KEYS_USER)await lsRemove(k);
+      if(!cancelled)setPersistOk(true);
+      if(!cancelled)setLd(true);
     })();
-  },[accessOk]);
+    return()=>{ cancelled=true; };
+  },[accessOk,tursoLoadTick]);
   useEffect(()=>{if(ld&&persistOk)store.set("v2",vids);},[vids,ld,persistOk]);
   useEffect(()=>{if(ld&&persistOk)store.set("n2",nts);},[nts,ld,persistOk]);
   useEffect(()=>{if(ld&&persistOk)store.set("nn2",nn);},[nn,ld,persistOk]);
@@ -952,12 +972,12 @@ export default function App(){
 <span className="px-2 py-1 bg-zinc-200/90 dark:bg-zinc-800/50 rounded-lg">{st.s} มาตรา</span><span className="px-2 py-1 bg-zinc-200/90 dark:bg-zinc-800/50 rounded-lg">{st.v} วิดีโอ</span><span className="px-2 py-1 bg-zinc-200/90 dark:bg-zinc-800/50 rounded-lg">{st.n} สรุป</span></div></div></div>
 <div className="max-w-7xl mx-auto px-4 flex gap-0 overflow-x-auto">{tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} className={`px-4 py-2.5 flex items-center gap-2 text-sm font-medium border-b-2 transition-all shrink-0 ${tab===t.id?"border-amber-500 text-amber-700 dark:text-amber-400":"border-transparent text-zinc-600 hover:text-zinc-900 dark:text-zinc-500 dark:hover:text-zinc-300"}`}><t.icon size={16}/>{t.l}</button>)}</div>
 </header>
-<main className="max-w-7xl mx-auto px-4 py-6">
+<main className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
 {tab==="mindmap"&&<MindMapV sections={SECTIONS} nn={nn} setNn={setNn} vids={vids} nts={nts} focusNodeId={mmTargetId} onFocusApplied={clearMmTarget} statuteByNum={statuteByNum} statuteLoadState={statuteLoadState}/>}
 {tab==="youtube"&&<YTV vids={vids} setVids={setVids}/>}
 {tab==="lectures"&&<LV nts={nts} setNts={setNts} sections={SECTIONS} isDark={theme==="dark"}/>}
 {tab==="search"&&<SV sections={SECTIONS} vids={vids} nts={nts} onOpenMindMap={(id)=>{setMmTargetId(id);setTab("mindmap");}} statuteByNum={statuteByNum} statuteLoadState={statuteLoadState}/>}
-{tab==="settings"&&<SettingsV vids={vids} setVids={setVids} appMeta={appMeta} setAppMeta={setAppMeta} dataReady={ld} persistOk={persistOk}/>}
+{tab==="settings"&&<SettingsV vids={vids} setVids={setVids} appMeta={appMeta} setAppMeta={setAppMeta} dataReady={ld} persistOk={persistOk} onRetryTurso={()=>setTursoLoadTick((n)=>n+1)}/>}
 </main></div>);
 }
 
@@ -980,7 +1000,19 @@ function MindMapV({sections,nn,setNn,vids,nts,focusNodeId,onFocusApplied,statute
   const [exp,setExp]=useState(new Set(["p1","p2","p3"]));
   const [nt,setNt]=useState("");
   const detailPanelRef=useRef(null);
+  const detailColumnRef=useRef(null);
   const [detailPanelFs,setDetailPanelFs]=useState(false);
+  useLayoutEffect(()=>{
+    if(!sel)return;
+    const narrow=typeof window!=="undefined"&&window.matchMedia("(max-width:767px)").matches;
+    if(!narrow)return;
+    const id=requestAnimationFrame(()=>{
+      requestAnimationFrame(()=>{
+        detailColumnRef.current?.scrollIntoView({behavior:"smooth",block:"start",inline:"nearest"});
+      });
+    });
+    return()=>cancelAnimationFrame(id);
+  },[sel]);
   useEffect(()=>{
     const sync=()=>{
       const el=getFullscreenElement();
@@ -1041,25 +1073,28 @@ function MindMapV({sections,nn,setNn,vids,nts,focusNodeId,onFocusApplied,statute
       ? statuteResolved.penaltyFromDb ?? sel.penalty
       : sel?.penalty;
   return(
-<div className="flex gap-6" style={{minHeight:"calc(100vh - 160px)"}}>
-<div className="flex-1 min-w-0">
-<div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2"><Map size={20} className="text-amber-500"/>โครงสร้างประมวลกฎหมายอาญา</h2>
-<button onClick={()=>setExp(new Set(["p1","p2","p3"]))} className="text-xs text-zinc-500 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 px-3 py-1.5 rounded-lg bg-zinc-200/90 dark:bg-zinc-800/50">ยุบทั้งหมด</button></div>
-<div className="space-y-0.5">{sections.map(s=><TN key={s.id} n={s} d={0} ex={exp} tog={tog} sel={sel} setSel={setSel} nn={nn}/>)}</div></div>
-<div className="w-[400px] flex-shrink-0">{sel?(
+<div
+  className={`flex flex-col gap-5 md:flex-row md:gap-6 md:items-start ${sel ? "max-md:flex-col-reverse max-md:gap-4" : ""}`}
+  style={{ minHeight: "calc(100vh - 160px)" }}
+>
+<div className="w-full min-w-0 md:flex-1 md:order-none">
+<div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><h2 className="text-base sm:text-lg font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2 min-w-0"><Map size={20} className="text-amber-500 shrink-0"/>โครงสร้างประมวลกฎหมายอาญา</h2>
+<button type="button" onClick={()=>setExp(new Set(["p1","p2","p3"]))} className="shrink-0 self-start text-xs text-zinc-500 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 px-3 py-1.5 rounded-lg bg-zinc-200/90 dark:bg-zinc-800/50">ยุบทั้งหมด</button></div>
+<div className="space-y-0.5 w-full min-w-0 overflow-x-auto pb-1 -mx-1 px-1">{sections.map(s=><TN key={s.id} n={s} d={0} ex={exp} tog={tog} sel={sel} setSel={setSel} nn={nn}/>)}</div></div>
+<div ref={detailColumnRef} className="w-full min-w-0 md:w-[min(100%,26rem)] md:max-w-md md:flex-shrink-0 scroll-mt-24 md:scroll-mt-0">{sel?(
 <div
 ref={detailPanelRef}
-className={`sticky top-36 border border-zinc-200 dark:border-zinc-800/60 overflow-hidden overflow-y-auto ${
+className={`border border-zinc-200 dark:border-zinc-800/60 overflow-hidden overflow-y-auto md:sticky md:top-32 lg:top-36 shadow-lg md:shadow-none ring-1 ring-zinc-200/80 dark:ring-zinc-700/50 md:ring-0 ${
   detailPanelFs
     ? "h-full max-h-none min-h-[100dvh] rounded-none bg-white dark:bg-zinc-950 shadow-none"
-    : "max-h-[calc(100vh-170px)] rounded-2xl bg-white/95 dark:bg-zinc-900/80"
+    : "max-md:max-h-[min(72dvh,34rem)] max-h-[min(70vh,32rem)] md:max-h-[calc(100vh-9.5rem)] rounded-2xl bg-white/95 dark:bg-zinc-900/80"
 }`}
 >
 <div className="p-5 border-b border-zinc-200 dark:border-zinc-800/40">
 <div className="flex items-start justify-between gap-3">
 <div className="min-w-0 flex-1">
 <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-md border ${TC[sel.type]}`}>{sel.type==="section"?`มาตรา ${sel.num}`:sel.type==="part"?"ภาค":sel.type==="chapter"?"ลักษณะ":"หมวด"}</span>
-<h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 mt-2">{sel.label}</h3>
+<h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 mt-2 break-words [overflow-wrap:anywhere]">{sel.label}</h3>
 </div>
 <button
 type="button"
@@ -1126,17 +1161,17 @@ aria-expanded={detailPanelFs}
 );})}</div></div>}
 {rn.length>0&&<div className="p-5"><h4 className="text-sm font-semibold text-blue-400 mb-3 flex items-center gap-2"><FileText size={14}/>สรุป Lecture ({rn.length})</h4>{rn.map(n=><div key={n.id} className="p-2 rounded-lg bg-zinc-200/70 dark:bg-zinc-800/30 text-sm text-zinc-400 dark:text-zinc-300">{n.title}</div>)}</div>}
 </div>):(
-<div className="sticky top-36 bg-zinc-200/65 dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800/30 rounded-2xl p-8 text-center"><Map size={40} className="text-zinc-400 dark:text-zinc-700 mx-auto mb-3"/><p className="text-sm text-zinc-500 dark:text-zinc-500">เลือกมาตรา/หมวด/ลักษณะ<br/>จากแผนผังด้านซ้าย<br/>เพื่อดูรายละเอียดและเพิ่มบันทึก</p></div>
+<div className="rounded-2xl border border-zinc-200 dark:border-zinc-800/30 bg-zinc-200/65 dark:bg-zinc-900/40 p-6 sm:p-8 text-center md:sticky md:top-32 lg:top-36"><Map size={40} className="text-zinc-400 dark:text-zinc-700 mx-auto mb-3"/><p className="text-sm text-zinc-500 dark:text-zinc-500 leading-relaxed">เลือกมาตรา/หมวด/ลักษณะ<br className="hidden sm:block"/><span className="sm:hidden"> </span>จากแผนผังด้านบน<br/>เพื่อดูรายละเอียดและเพิ่มบันทึก</p></div>
 )}</div></div>);
 }
 
-function StorageBackendBanner({ dataReady, persistOk }) {
+function StorageBackendBanner({ dataReady, persistOk, onRetryTurso }) {
   const [api, setApi] = useState("idle");
   useEffect(() => {
     if (!USE_TURSO) return;
     let cancelled = false;
     setApi("checking");
-    fetch("/api/kv/v2")
+    fetch("/api/user-data")
       .then((r) => {
         if (cancelled) return;
         if (r.status === 503) setApi("no_config");
@@ -1157,9 +1192,16 @@ function StorageBackendBanner({ dataReady, persistOk }) {
     return (
       <div className="mb-8 rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-900 dark:text-red-200/95 leading-relaxed">
         <p className="mb-1 font-semibold">Turso — โหลดข้อมูลผู้ใช้ไม่สำเร็จ</p>
-        <p className="text-xs opacity-90">
-          แอปจะไม่บันทึกการแก้ไขขึ้นเซิร์ฟเวอร์จนกว่า {code("/api/kv/*")} จะตอบได้ครบทุกคีย์ — ตรวจ {code("pages:dev")} + proxy, หรือ env บน Cloudflare
+        <p className="text-xs opacity-90 mb-3">
+          ต้องมี {code("/api/user-data")} ตอบ 200 — บนเครื่องให้รัน {code("npm run pages:dev")} คู่กับ {code("npm run dev")} (proxy ไปพอร์ต 8788) · บน Cloudflare ตรวจ {code("TURSO_*")} เป็น Runtime และตาราง {code("app_kv")}
         </p>
+        <button
+          type="button"
+          onClick={() => onRetryTurso?.()}
+          className="rounded-lg bg-red-600/90 px-3 py-2 text-xs font-medium text-white hover:bg-red-600"
+        >
+          ลองโหลดจาก Turso อีกครั้ง
+        </button>
       </div>
     );
   }
@@ -1186,7 +1228,7 @@ function StorageBackendBanner({ dataReady, persistOk }) {
     return box(
       "border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-200/95",
       "Turso — กำลังทดสอบ API",
-      <p className="text-xs opacity-90">เรียก {code("/api/kv/v2")} …</p>
+      <p className="text-xs opacity-90">เรียก {code("/api/user-data")} …</p>
     );
   }
   if (api === "ok") {
@@ -1216,7 +1258,7 @@ function StorageBackendBanner({ dataReady, persistOk }) {
   );
 }
 
-function SettingsV({ vids, setVids, appMeta, setAppMeta, dataReady, persistOk }) {
+function SettingsV({ vids, setVids, appMeta, setAppMeta, dataReady, persistOk, onRetryTurso }) {
   const uv = (id, u) => setVids(vids.map((x) => (x.id === id ? { ...x, ...u } : x)));
   const dv = (id) => {
     if (!confirm("ลบวิดีโอรายการนี้?")) return;
@@ -1229,7 +1271,7 @@ function SettingsV({ vids, setVids, appMeta, setAppMeta, dataReady, persistOk })
         ตั้งค่า
       </h2>
       <p className="text-sm text-zinc-500 dark:text-zinc-500 mb-4">แก้ข้อความหัวเว็บ และแก้ชื่อวิดีโอ / ช่อง / tag ที่คุณใส่เอง / Video ID — บันทึกอัตโนมัติ</p>
-      <StorageBackendBanner dataReady={dataReady} persistOk={persistOk} />
+      <StorageBackendBanner dataReady={dataReady} persistOk={persistOk} onRetryTurso={onRetryTurso} />
       <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800/60 bg-zinc-100/90 dark:bg-zinc-900/50 p-5 mb-8">
         <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 mb-3 flex items-center gap-2">
           <Tag size={14} className="text-amber-500" />
@@ -1370,11 +1412,11 @@ function TN({n,d,ex,tog,sel,setSel,nn}){
   const hc=n.children&&n.children.length>0;const ie=ex.has(n.id);const is=sel?.id===n.id;const nc=(nn[n.id]||[]).length;
   const cl={part:"border-l-amber-500",chapter:"border-l-blue-500",division:"border-l-teal-500",section:"border-l-purple-400"};
   const dc={part:"bg-amber-500",chapter:"bg-blue-500",division:"bg-teal-500",section:"bg-purple-400"};
-  return(<div><div onClick={()=>{setSel(n);if(hc)tog(n.id);}} style={{paddingLeft:d*20+12}} className={`flex items-center gap-2 py-2 px-3 rounded-xl cursor-pointer transition-all group border-l-2 ${cl[n.type]} ${is?"bg-zinc-200/90 dark:bg-zinc-800/80 border-l-amber-400":"bg-transparent hover:bg-zinc-200/80 dark:bg-zinc-800/40"}`}>
+  return(<div className="min-w-0"><div onClick={()=>{setSel(n);if(hc)tog(n.id);}} style={{paddingLeft:d*14+8}} className={`flex min-w-0 items-center gap-2 py-2 pr-2 pl-2 sm:pl-3 rounded-xl cursor-pointer transition-all group border-l-2 ${cl[n.type]} ${is?"bg-zinc-200/90 dark:bg-zinc-800/80 border-l-amber-400":"bg-transparent hover:bg-zinc-200/80 dark:bg-zinc-800/40"}`}>
   {hc?(ie?<ChevronDown size={14} className="text-zinc-500 dark:text-zinc-500 flex-shrink-0"/>:<ChevronRight size={14} className="text-zinc-500 dark:text-zinc-500 flex-shrink-0"/>):<div className={`w-2 h-2 rounded-full ${dc[n.type]} flex-shrink-0 ml-0.5 mr-0.5`}/>}
-  <span className={`text-sm truncate ${is?"text-amber-800 dark:text-amber-300 font-semibold":n.type==="section"?"text-zinc-700 dark:text-zinc-300":"text-zinc-600 dark:text-zinc-400 font-medium"}`}>{n.label}</span>
-  {nc>0&&<span className="ml-auto text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-md flex-shrink-0">{nc}</span>}
-  </div>{hc&&ie&&<div>{n.children.map(c=><TN key={c.id} n={c} d={d+1} ex={ex} tog={tog} sel={sel} setSel={setSel} nn={nn}/>)}</div>}</div>);
+  <span className={`min-w-0 flex-1 text-sm leading-snug break-words [overflow-wrap:anywhere] md:truncate ${is?"text-amber-800 dark:text-amber-300 font-semibold":n.type==="section"?"text-zinc-700 dark:text-zinc-300":"text-zinc-600 dark:text-zinc-400 font-medium"}`}>{n.label}</span>
+  {nc>0&&<span className="text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-md flex-shrink-0">{nc}</span>}
+  </div>{hc&&ie&&<div className="min-w-0">{n.children.map(c=><TN key={c.id} n={c} d={d+1} ex={ex} tog={tog} sel={sel} setSel={setSel} nn={nn}/>)}</div>}</div>);
 }
 
 function YTV({vids,setVids}){

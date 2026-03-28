@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * ตรวจว่า endpoint /api/kv/v2 ตอบได้หรือไม่ (ไม่ต้องมี token ในเครื่อง — เรียกแบบ client)
+ * ตรวจว่า endpoint /api/user-data ตอบได้หรือไม่ (รวม v2/n2/nn2/m2 ในคำขอเดียว)
  *
  * ท้องถิ่น: รัน `npm run build` แล้ว `npm run pages:dev` ค้างไว้ จากนั้น:
  *   node scripts/check-turso.mjs
@@ -10,7 +10,7 @@
  */
 
 const base = (process.env.CHECK_TURSO_URL || "http://127.0.0.1:8788").replace(/\/$/, "");
-const url = `${base}/api/kv/v2`;
+const url = `${base}/api/user-data`;
 
 async function main() {
   console.log(`GET ${url}\n`);
@@ -27,7 +27,7 @@ async function main() {
   const text = await res.text();
   let hint = "";
   if (res.status === 200) {
-    hint = " — OK (อาจได้ null ถ้ายังไม่เคยบันทึกข้อมูล)";
+    hint = " — OK (JSON มี v2/n2/nn2/m2 — มักเป็น null ถ้ายังไม่เคยบันทึก)";
   } else if (res.status === 503) {
     hint = " — Functions รันอยู่แต่ยังไม่มี TURSO_DATABASE_URL / TURSO_AUTH_TOKEN (runtime)";
   } else if (res.status === 404) {

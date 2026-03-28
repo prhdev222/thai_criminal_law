@@ -209,7 +209,7 @@ criminal-law-frontend/
 ## 🔌 Turso + Cloudflare Pages (sync ข้อมูลข้ามเครื่อง)
 
 แอปเก็บข้อมูลผู้ใช้ที่ key `v2` (วิดีโอ YouTube), `n2` (lecture notes), `nn2` (บันทึก mind map), `m2` (หัวเว็บ) — โดยค่าเริ่มต้นใช้ **localStorage**  
-ถ้าเปิด **`VITE_USE_TURSO=1`** ตอน build จะอ่าน/เขียน **เฉพาะ Turso ผ่าน `/api/kv/*`** (ไม่ fallback ไป localStorage, ไม่เขียนเครื่องก่อน) — ฐานว่างจะได้รายการว่าง ไม่ใช่ข้อมูลตัวอย่างใน bundle · หลังโหลดสำเร็จแอปจะล้างคีย์ `v2`/`n2`/`nn2`/`m2` ใน localStorage เก่า (กันสับสนกับข้อมูลก่อนเปิด Turso)
+ถ้าเปิด **`VITE_USE_TURSO=1`** ตอน build จะอ่าน/เขียน **เฉพาะ Turso** — โหลดครั้งแรกใช้ **`GET /api/user-data`** (ดึง `v2`/`n2`/`nn2`/`m2` ในคำขอเดียว) การบันทึกใช้ **`PUT /api/kv/{key}`** · ไม่ fallback ไป localStorage · ฐานว่างจะได้รายการว่าง ไม่ใช่ข้อมูลตัวอย่างใน bundle
 
 ### 1) สร้างฐานข้อมูล Turso + schema
 
