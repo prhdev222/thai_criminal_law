@@ -454,32 +454,91 @@ const rMd = (t, dark = true) => {
   const h3c = dark ? "#e4e4e7" : "#3f3f46";
   const strong = dark ? "#e4e4e7" : "#27272a";
   const bullet = dark ? "#d4a953" : "#a16207";
-  return t
+  const ytPlaceholders = [];
+  let body = String(t).replace(/^\s*(https?:\/\/\S+)\s*$/gm, (full, url) => {
+    const yid = extractYoutubeVideoId(url);
+    if (!yid) return full;
+    const i = ytPlaceholders.length;
+    ytPlaceholders.push(yid);
+    return `\n__YT_EMBED_${i}__\n`;
+  });
+  body = body
     .replace(/^### (.+)$/gm, `<h3 style="font-size:15px;font-weight:700;color:${h3c};margin:16px 0 6px">$1</h3>`)
     .replace(/^## (.+)$/gm, `<h2 style="font-size:17px;font-weight:700;color:${h2c};margin:20px 0 8px">$1</h2>`)
     .replace(/\*\*(.+?)\*\*/g, `<strong style="color:${strong}">$1</strong>`)
     .replace(/^[•\-] (.+)$/gm, `<div style="padding-left:16px;position:relative;margin:3px 0"><span style="position:absolute;left:0;color:${bullet}">◆</span> $1</div>`)
     .replace(/\n/g, "<br/>");
+  ytPlaceholders.forEach((yid, i) => {
+    const token = `__YT_EMBED_${i}__`;
+    const iframe = `<div style="position:relative;width:100%;max-width:640px;margin:12px 0;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:12px;border:1px solid ${dark ? "#3f3f46" : "#d4d4d8"}"><iframe style="position:absolute;top:0;left:0;width:100%;height:100%" src="https://www.youtube-nocookie.com/embed/${yid}" title="YouTube" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div>`;
+    body = body.split(token).join(iframe);
+  });
+  return body;
 };
 
-/** แปลง tag สตริง: ข้อความธรรมดา | URL เต็ม | รูปแบบ ชื่อที่แสดง|https://... */
+/** ดึง YouTube video id จาก URL หรือสตริงที่เป็น id อยู่แล้ว (รองรับ youtu.be, watch?v=, embed/, shorts/) */
+function extractYoutubeVideoId(input) {
+  if (input == null) return null;
+  const s = String(input).trim();
+  if (!s) return null;
+  if (/^[a-zA-Z0-9_-]{11}$/.test(s)) return s;
+  let urlStr = s;
+  if (!/^https?:\/\//i.test(urlStr)) {
+    if (/^(?:www\.)?youtube\.com/i.test(urlStr) || /^youtu\.be\//i.test(urlStr)) urlStr = `https://${urlStr}`;
+  }
+  try {
+    const u = new URL(urlStr);
+    const host = u.hostname.replace(/^www\./i, "").toLowerCase();
+    if (host === "youtu.be") {
+      const id = u.pathname.replace(/^\//, "").split("/")[0]?.split("?")[0];
+      if (id && /^[a-zA-Z0-9_-]{11}$/.test(id)) return id;
+    }
+    if (host === "youtube.com" || host === "m.youtube.com" || host === "music.youtube.com") {
+      const v = u.searchParams.get("v");
+      if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) return v;
+      const m = u.pathname.match(/\/(?:embed|shorts|live)\/([a-zA-Z0-9_-]{11})/);
+      if (m) return m[1];
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+/** แปลง tag สตริง: ข้อความธรรมดา | URL เต็ม | รูปแบบ ชื่อที่แสดง|https://... — ลิงก์ YouTube จะได้ type youtube + youtubeId สำหรับฝังเล่น */
 function parseVideoTag(raw) {
   const s = String(raw).trim();
-  if (!s) return { type: "text", label: s, href: null };
+  if (!s) return { type: "text", label: s, href: null, youtubeId: null };
   const pipe = s.indexOf("|");
   if (pipe > 0) {
     const label = s.slice(0, pipe).trim();
     const url = s.slice(pipe + 1).trim();
-    if (/^https?:\/\//i.test(url))
-      return { type: "link", label: label || shortLinkLabel(url), href: url };
+    if (/^https?:\/\//i.test(url)) {
+      const yid = extractYoutubeVideoId(url);
+      return {
+        type: yid ? "youtube" : "link",
+        label: label || shortLinkLabel(url),
+        href: url,
+        youtubeId: yid,
+      };
+    }
   }
-  if (/^https?:\/\//i.test(s)) return { type: "link", label: shortLinkLabel(s), href: s };
-  return { type: "text", label: s, href: null };
+  if (/^https?:\/\//i.test(s)) {
+    const yid = extractYoutubeVideoId(s);
+    return {
+      type: yid ? "youtube" : "link",
+      label: shortLinkLabel(s),
+      href: s,
+      youtubeId: yid,
+    };
+  }
+  return { type: "text", label: s, href: null, youtubeId: null };
 }
 function shortLinkLabel(url) {
   try {
     const u = new URL(url);
     const p = u.pathname.toLowerCase();
+    if (u.hostname.includes("youtube.com") || u.hostname.includes("youtu.be")) return "YouTube";
     if (u.hostname.includes("docs.google.com")) return "Google Doc";
     if (u.hostname.includes("drive.google.com")) return "Google Drive";
     if (/\.pdf(\?|$)/i.test(p) || p.endsWith(".pdf")) return "PDF";
@@ -501,6 +560,18 @@ function tagMatchesQuery(raw, ql) {
 function VideoTagChip({ raw }) {
   const p = parseVideoTag(raw);
   const base = "text-[11px] px-2 py-0.5 rounded-md border max-w-full min-w-0";
+  if (p.youtubeId)
+    return (
+      <div className="w-full basis-full min-w-0 rounded-xl overflow-hidden border border-zinc-300 dark:border-zinc-700/60 bg-black aspect-video shadow-sm">
+        <iframe
+          title={p.label || "YouTube"}
+          className="w-full h-full"
+          src={`https://www.youtube-nocookie.com/embed/${p.youtubeId}`}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+        />
+      </div>
+    );
   if (p.type === "link" && p.href)
     return (
       <a
@@ -1009,7 +1080,11 @@ function SettingsV({ vids, setVids, appMeta, setAppMeta }) {
               <input
                 value={v.youtubeId}
                 onChange={(e) => uv(v.id, { youtubeId: e.target.value.trim() })}
-                placeholder="YouTube Video ID"
+                onBlur={(e) => {
+                  const y = extractYoutubeVideoId(e.target.value);
+                  if (y) uv(v.id, { youtubeId: y });
+                }}
+                placeholder="ลิงก์ YouTube หรือ Video ID"
                 className="w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800/60 px-3 py-2 text-sm font-mono text-zinc-900 dark:text-zinc-100 outline-none focus:border-amber-500/50"
               />
             </div>
@@ -1109,12 +1184,12 @@ function YTV({vids,setVids}){
 function AVF({onAdd,onCancel}){
   const [f,sF]=useState({youtubeId:"",title:"",channel:"",tags:"",rating:4});
   return(<div className="bg-white/95 dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-2xl p-5 mb-5"><h3 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 mb-4">เพิ่มวิดีโอใหม่</h3>
-<div className="grid grid-cols-2 gap-3 mb-3"><input value={f.youtubeId} onChange={e=>sF({...f,youtubeId:e.target.value})} placeholder="YouTube Video ID" className="bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none"/><input value={f.channel} onChange={e=>sF({...f,channel:e.target.value})} placeholder="Channel" className="bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none"/></div>
+<div className="grid grid-cols-2 gap-3 mb-3"><input value={f.youtubeId} onChange={e=>sF({...f,youtubeId:e.target.value})} onBlur={e=>{const y=extractYoutubeVideoId(e.target.value);if(y)sF({...f,youtubeId:y});}} placeholder="ลิงก์ youtu.be/... หรือ ID" className="bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none"/><input value={f.channel} onChange={e=>sF({...f,channel:e.target.value})} placeholder="Channel" className="bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none"/></div>
 <input value={f.title} onChange={e=>sF({...f,title:e.target.value})} placeholder="ชื่อวิดีโอ *" className="w-full bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none mb-3"/>
 <input value={f.tags} onChange={e=>sF({...f,tags:e.target.value})} placeholder="Tag — พิมพ์เอง คั่นแต่ละอันด้วย comma" className="w-full bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none mb-3"/>
-<p className="text-[11px] text-zinc-500 dark:text-zinc-500 mb-3 leading-relaxed">ถ้าต้องการแสดงเป็นลิงก์ ใช้รูปแบบ ชื่อที่แสดง|URL ในช่อง tag (คั่นหลาย tag ด้วย comma)</p>
+<p className="text-[11px] text-zinc-500 dark:text-zinc-500 mb-3 leading-relaxed">Tag: วางลิงก์ YouTube เต็มๆ (เช่น youtu.be/...) จะฝังตัวเล่นในหน้าการ์ด — หรือใช้ ชื่อที่แสดง|URL สำหรับลิงก์ทั่วไป (คั่นหลาย tag ด้วย comma)</p>
 <div className="flex items-center gap-3 mb-4"><span className="text-xs text-zinc-500 dark:text-zinc-500">คะแนน:</span>{[1,2,3,4,5].map(r=><button key={r} onClick={()=>sF({...f,rating:r})} className={`text-lg ${r<=f.rating?"text-amber-400":"text-zinc-500 dark:text-zinc-600"}`}>★</button>)}</div>
-<div className="flex gap-2 justify-end"><button onClick={onCancel} className="px-4 py-2 text-sm text-zinc-500 dark:text-zinc-400">ยกเลิก</button><button onClick={()=>{if(!f.title.trim())return;onAdd({id:"v"+Date.now(),youtubeId:f.youtubeId||"dQw4w9WgXcQ",title:f.title,channel:f.channel,tags:f.tags.split(",").map(t=>t.trim()).filter(Boolean),rating:f.rating,status:"unwatched",favorite:false});}} className="px-4 py-2 bg-red-500/20 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/30 border border-red-500/20">บันทึก</button></div></div>);
+<div className="flex gap-2 justify-end"><button onClick={onCancel} className="px-4 py-2 text-sm text-zinc-500 dark:text-zinc-400">ยกเลิก</button><button onClick={()=>{if(!f.title.trim())return;const raw=String(f.youtubeId).trim();const yid=extractYoutubeVideoId(raw);onAdd({id:"v"+Date.now(),youtubeId:yid||raw||"dQw4w9WgXcQ",title:f.title,channel:f.channel,tags:f.tags.split(",").map(t=>t.trim()).filter(Boolean),rating:f.rating,status:"unwatched",favorite:false});}} className="px-4 py-2 bg-red-500/20 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/30 border border-red-500/20">บันทึก</button></div></div>);
 }
 
 function LV({nts,setNts,sections,isDark}){
