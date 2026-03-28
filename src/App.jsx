@@ -948,6 +948,22 @@ export default function App(){
 </div>
 </div>);
   }
+  /* Turso: รอโหลดครั้งแรกจาก API ก่อน — ถ้าให้แก้ Lecture/YouTube ก่อน ld=true จะไม่ persist และ setNts/setVids จากเซิร์ฟเวอร์ทับของที่พิมพ์ค้าง */
+  if (USE_TURSO && !ld) {
+    return (
+      <div
+        className="min-h-screen bg-zinc-100 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-200 flex items-center justify-center p-4 transition-colors"
+        style={{ fontFamily: "'Sarabun','Noto Sans Thai',sans-serif" }}
+      >
+        <div className="text-center max-w-sm space-y-2">
+          <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">กำลังโหลดข้อมูลจากเซิร์ฟเวอร์ (Turso)…</p>
+          <p className="text-xs text-zinc-500 dark:text-zinc-500 leading-relaxed">
+            รอสักครู่ก่อนแก้ไข Lecture Notes / วิดีโอ — ระบบจะซิงก์คีย์ <code className="text-[11px] bg-zinc-200/80 dark:bg-zinc-800/60 px-1 rounded">n2</code> หลังโหลดเสร็จ
+          </p>
+        </div>
+      </div>
+    );
+  }
   return(
 <div className="min-h-screen bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-200 transition-colors" style={{fontFamily:"'Sarabun','Noto Sans Thai',sans-serif"}}>
 <header className="border-b border-zinc-200 dark:border-zinc-800/60 bg-white/90 dark:bg-zinc-950/80 backdrop-blur-xl sticky top-0 z-50">
@@ -975,7 +991,7 @@ export default function App(){
 <main className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
 {tab==="mindmap"&&<MindMapV sections={SECTIONS} nn={nn} setNn={setNn} vids={vids} nts={nts} focusNodeId={mmTargetId} onFocusApplied={clearMmTarget} statuteByNum={statuteByNum} statuteLoadState={statuteLoadState}/>}
 {tab==="youtube"&&<YTV vids={vids} setVids={setVids}/>}
-{tab==="lectures"&&<LV nts={nts} setNts={setNts} sections={SECTIONS} isDark={theme==="dark"}/>}
+{tab==="lectures"&&<LV nts={nts} setNts={setNts} sections={SECTIONS} isDark={theme==="dark"} persistOk={persistOk}/>}
 {tab==="search"&&<SV sections={SECTIONS} vids={vids} nts={nts} onOpenMindMap={(id)=>{setMmTargetId(id);setTab("mindmap");}} statuteByNum={statuteByNum} statuteLoadState={statuteLoadState}/>}
 {tab==="settings"&&<SettingsV vids={vids} setVids={setVids} appMeta={appMeta} setAppMeta={setAppMeta} dataReady={ld} persistOk={persistOk} onRetryTurso={()=>setTursoLoadTick((n)=>n+1)}/>}
 </main></div>);
@@ -1494,9 +1510,9 @@ function AVF({onAdd,onCancel}){
 <div className="flex gap-2 justify-end"><button onClick={onCancel} className="px-4 py-2 text-sm text-zinc-500 dark:text-zinc-400">ยกเลิก</button><button onClick={()=>{if(!f.title.trim())return;const raw=String(f.youtubeId).trim();const yid=extractYoutubeVideoId(raw);const gdu=normalizeGoogleDocOrDriveUrl(f.googleDocUrl);onAdd({id:"v"+Date.now(),youtubeId:yid||raw||"dQw4w9WgXcQ",title:f.title,channel:f.channel,googleDocUrl:gdu||"",tags:f.tags.split(",").map(t=>t.trim()).filter(Boolean),rating:f.rating,status:"unwatched",favorite:false});}} className="px-4 py-2 bg-red-500/20 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/30 border border-red-500/20">บันทึก</button></div></div>);
 }
 
-function LV({nts,setNts,sections,isDark}){
+function LV({nts,setNts,sections,isDark,persistOk=true}){
   const [sel,setSel]=useState(null);const [sa,setSa]=useState(false);const [ed,setEd]=useState(null);const [fl,setFl]=useState("");
-  const fd=nts.filter(n=>!fl||n.title.toLowerCase().includes(fl.toLowerCase())||n.content.toLowerCase().includes(fl.toLowerCase()));
+  const fd=nts.filter(n=>!fl||String(n.title??"").toLowerCase().includes(fl.toLowerCase())||String(n.content??"").toLowerCase().includes(fl.toLowerCase()));
   const gsl=(sid)=>{const f=(ns)=>{for(const n of ns){if(n.id===sid)return n.label;if(n.children){const r=f(n.children);if(r)return r;}}return null;};return f(sections)||"ไม่ระบุ";};
   if(sel&&!ed)return(<div><button onClick={()=>setSel(null)} className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300 mb-4"><ArrowLeft size={16}/>กลับ</button>
 <div className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/40 rounded-2xl overflow-hidden"><div className="p-6 border-b border-zinc-200 dark:border-zinc-800/40"><div className="flex items-center justify-between mb-3"><span className="text-xs text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-md">{sel.type==="summary"?"สรุป":sel.type==="comparison"?"เปรียบเทียบ":sel.type}</span><div className="flex gap-2"><button onClick={()=>setNts(nts.map(n=>n.id===sel.id?{...n,starred:!n.starred}:n))}><Star size={16} className={sel.starred?"text-amber-400 fill-amber-400":"text-zinc-500 dark:text-zinc-600"}/></button><button onClick={()=>setEd(sel)} className="text-zinc-500 dark:text-zinc-500 hover:text-blue-400"><Edit3 size={16}/></button><button onClick={()=>{setNts(nts.filter(n=>n.id!==sel.id));setSel(null);}} className="text-zinc-500 dark:text-zinc-500 hover:text-red-400"><Trash2 size={16}/></button></div></div>
@@ -1504,10 +1520,11 @@ function LV({nts,setNts,sections,isDark}){
 <div className="p-6"><div className="whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed" dangerouslySetInnerHTML={{__html:rMd(sel.content,isDark)}}/></div></div></div>);
   if(ed)return(<NE note={ed} onSave={u=>{setNts(nts.map(n=>n.id===ed.id?{...n,...u,updatedAt:new Date().toISOString().split("T")[0]}:n));setEd(null);setSel({...ed,...u});}} onCancel={()=>setEd(null)} sections={sections}/>);
   return(<div>
+{USE_TURSO&&!persistOk&&<p className="mb-3 text-xs text-amber-800 dark:text-amber-300/90 bg-amber-500/15 border border-amber-500/25 rounded-xl px-3 py-2 leading-relaxed">โหมด Turso: ยังบันทึกขึ้นเซิร์ฟเวอร์ไม่ได้ (เช่น API 503) — Lecture จะอยู่แค่ในเครื่องนี้จนกว่าจะซิงก์ได้ · ไปแท็บตั้งค่าแล้วกดลองโหลดใหม่</p>}
 <div className="flex items-center justify-between mb-5"><h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2"><FileText size={20} className="text-blue-500"/>Lecture Notes</h2><button onClick={()=>setSa(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 text-blue-400 rounded-xl text-sm font-medium hover:bg-blue-500/30 border border-blue-500/20"><Plus size={16}/>เพิ่มสรุป</button></div>
 {sa&&<NE note={null} onSave={n=>{setNts([{...n,id:"n"+Date.now(),updatedAt:new Date().toISOString().split("T")[0]},...nts]);setSa(false);}} onCancel={()=>setSa(false)} sections={sections}/>}
 <div className="relative mb-5"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 dark:text-zinc-500"/><input value={fl} onChange={e=>setFl(e.target.value)} placeholder="ค้นหา lecture note..." className="w-full bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 rounded-xl pl-10 pr-4 py-2.5 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none focus:border-amber-500/50"/></div>
-<div className="space-y-3">{fd.sort((a,b)=>(b.starred?1:0)-(a.starred?1:0)).map(n=><div key={n.id} onClick={()=>setSel(n)} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/40 rounded-xl p-4 cursor-pointer hover:border-zinc-400 dark:hover:border-zinc-700/60 transition-all"><div className="flex items-start justify-between"><div className="flex-1 min-w-0"><div className="flex items-center gap-2 mb-1">{n.starred&&<Star size={14} className="text-amber-400 fill-amber-400 flex-shrink-0"/>}<h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate">{n.title}</h3></div><p className="text-xs text-zinc-500 dark:text-zinc-500">{gsl(n.sectionId)} • {n.source||""} • {n.updatedAt}</p><p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1.5 line-clamp-2">{n.content.replace(/[#*]/g,"").substring(0,120)}...</p></div><span className="text-[11px] px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-400 border border-purple-500/20 flex-shrink-0 ml-3">{n.type==="summary"?"สรุป":n.type==="comparison"?"เปรียบเทียบ":n.type}</span></div></div>)}</div>
+<div className="space-y-3">{fd.sort((a,b)=>(b.starred?1:0)-(a.starred?1:0)).map(n=><div key={n.id} onClick={()=>setSel(n)} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/40 rounded-xl p-4 cursor-pointer hover:border-zinc-400 dark:hover:border-zinc-700/60 transition-all"><div className="flex items-start justify-between"><div className="flex-1 min-w-0"><div className="flex items-center gap-2 mb-1">{n.starred&&<Star size={14} className="text-amber-400 fill-amber-400 flex-shrink-0"/>}<h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate">{n.title}</h3></div><p className="text-xs text-zinc-500 dark:text-zinc-500">{gsl(n.sectionId)} • {n.source||""} • {n.updatedAt}</p><p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1.5 line-clamp-2">{String(n.content??"").replace(/[#*]/g,"").substring(0,120)}...</p></div><span className="text-[11px] px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-400 border border-purple-500/20 flex-shrink-0 ml-3">{n.type==="summary"?"สรุป":n.type==="comparison"?"เปรียบเทียบ":n.type}</span></div></div>)}</div>
 {fd.length===0&&<div className="text-center py-16"><FileText size={40} className="text-zinc-400 dark:text-zinc-700 mx-auto mb-3"/><p className="text-zinc-500 dark:text-zinc-500 text-sm">ยังไม่มี Lecture Note</p></div>}</div>);
 }
 
