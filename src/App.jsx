@@ -985,14 +985,23 @@ function getFullscreenElement() {
   return document.fullscreenElement ?? document.webkitFullscreenElement ?? null;
 }
 async function exitDetailFullscreen() {
+  if (!getFullscreenElement()) return;
   const d = document;
-  if (d.exitFullscreen) await d.exitFullscreen();
-  else if (d.webkitExitFullscreen) d.webkitExitFullscreen();
+  try {
+    if (d.exitFullscreen) await d.exitFullscreen();
+    else if (d.webkitExitFullscreen) d.webkitExitFullscreen();
+  } catch {
+    /* เช่น Document not active (สลับแท็บ / iframe) หรือออกจากเต็มจอแล้ว */
+  }
 }
 async function enterDetailFullscreen(el) {
   if (!el) return;
-  if (el.requestFullscreen) await el.requestFullscreen();
-  else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+  try {
+    if (el.requestFullscreen) await el.requestFullscreen();
+    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+  } catch {
+    /* เบราว์เซอร์ปฏิเสธเต็มจอ */
+  }
 }
 
 function MindMapV({sections,nn,setNn,vids,nts,focusNodeId,onFocusApplied,statuteByNum,statuteLoadState}){

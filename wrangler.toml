@@ -5,3 +5,8 @@ pages_build_output_dir = "dist"
 
 # libSQL client ใช้กับ runtime แบบ Workers
 compatibility_flags = ["nodejs_compat"]
+
+# เมื่อ Cloudflare จัดการ env ผ่านไฟล์นี้ (Dashboard ใส่ได้แค่ Secret)
+# ตัวแปรธรรมดาสำหรับ build ต้องอยู่ที่นี่ — Vite ฝังค่านี้ตอน `vite build` บน Pages
+[vars]
+VITE_USE_TURSO = "1"
