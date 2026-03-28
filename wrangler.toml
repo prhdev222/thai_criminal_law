@@ -1,0 +1,7 @@
+# Cloudflare Pages — โฟลเดอร์ build หลัง vite build
+name = "criminal-law"
+compatibility_date = "2025-03-01"
+pages_build_output_dir = "dist"
+
+# libSQL client ใช้กับ runtime แบบ Workers
+compatibility_flags = ["nodejs_compat"]

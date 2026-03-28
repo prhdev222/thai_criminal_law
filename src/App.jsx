@@ -1,11 +1,62 @@
 import { useState, useEffect } from "react";
 import { Search, BookOpen, Youtube, Map, FileText, Plus, X, ChevronRight, ChevronDown, Star, Edit3, Trash2, Tag, Clock, Save, PlayCircle, ArrowLeft, Sparkles, MessageSquare, CheckCircle, Circle, ExternalLink } from "lucide-react";
 
-// Storage helper — ใช้ localStorage สำหรับ deploy
-// ถ้าต้องการเชื่อม Turso API ให้เปลี่ยนเป็น fetch() แทน
+// Storage: localStorage เสมอ + ถ้า VITE_USE_TURSO=1 จะ sync กับ Turso ผ่าน Cloudflare Pages Functions (/api/kv/*)
+const USE_TURSO =
+  import.meta.env.VITE_USE_TURSO === "1" || import.meta.env.VITE_USE_TURSO === "true";
+
+async function lsGet(k) {
+  try {
+    const v = localStorage.getItem(k);
+    return v ? JSON.parse(v) : null;
+  } catch {
+    return null;
+  }
+}
+async function lsSet(k, v) {
+  try {
+    localStorage.setItem(k, JSON.stringify(v));
+  } catch (e) {
+    console.error(e);
+  }
+}
+async function remoteGet(k) {
+  const r = await fetch(`/api/kv/${encodeURIComponent(k)}`);
+  if (!r.ok) throw new Error(`remote get ${r.status}`);
+  return r.json();
+}
+async function remoteSet(k, v) {
+  const r = await fetch(`/api/kv/${encodeURIComponent(k)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(v),
+  });
+  if (!r.ok) throw new Error(`remote set ${r.status}`);
+}
 const store = {
-  async get(k) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch { return null; } },
-  async set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e) { console.error(e); } },
+  async get(k) {
+    if (USE_TURSO) {
+      try {
+        const data = await remoteGet(k);
+        if (data != null) await lsSet(k, data);
+        return data;
+      } catch (e) {
+        console.warn("Turso get fallback localStorage", e);
+        return lsGet(k);
+      }
+    }
+    return lsGet(k);
+  },
+  async set(k, v) {
+    await lsSet(k, v);
+    if (USE_TURSO) {
+      try {
+        await remoteSet(k, v);
+      } catch (e) {
+        console.warn("Turso set failed (บันทึกในเครื่องแล้ว)", e);
+      }
+    }
+  },
 };
 
 // ============================================================

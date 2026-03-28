@@ -15,7 +15,7 @@
 
 - **Frontend**: React 18 + Vite + Tailwind CSS
 - **Icons**: Lucide React
-- **Storage**: localStorage (offline-first) — สามารถเชื่อม Turso API ได้ในอนาคต
+- **Storage**: localStorage + ทางเลือก **Turso** (ผ่าน Cloudflare Pages Functions, ตั้ง `VITE_USE_TURSO=1`)
 - **Deploy**: Cloudflare Pages (ฟรี)
 - **Font**: Sarabun + Noto Sans Thai (Google Fonts)
 
@@ -206,54 +206,53 @@ criminal-law-frontend/
 
 ---
 
-## 🔌 เชื่อม API (ขั้นสูง — ถ้าต้องการ)
+## 🔌 Turso + Cloudflare Pages (sync ข้อมูลข้ามเครื่อง)
 
-ตอนนี้แอปใช้ **localStorage** เก็บข้อมูล (ทำงาน offline ได้) ถ้าต้องการเชื่อมกับ **Turso API** ที่สร้างไว้ก่อนหน้า:
+แอปเก็บข้อมูลผู้ใช้ที่ key `v2` (วิดีโอ), `n2` (lecture notes), `nn2` (บันทึก mind map) — โดยค่าเริ่มต้นใช้ **localStorage**  
+ถ้าเปิด **`VITE_USE_TURSO=1`** ตอน build จะอ่าน/เขียนผ่าน **Pages Functions** ไปที่ **Turso** (credential อยู่ฝั่ง Cloudflare เท่านั้น ไม่โผล่ใน bundle)
 
-**1. ตั้งค่า Environment Variable**
+### 1) สร้างฐานข้อมูล Turso + schema
 
-สร้างไฟล์ `.env` ในโฟลเดอร์โปรเจค:
-
-```env
-VITE_API_URL=https://criminal-law-api.YOUR_SUBDOMAIN.workers.dev
+```bash
+# ติดตั้ง Turso CLI แล้ว login
+turso db create thai-criminal-law
+turso db tokens create thai-criminal-law
+turso db shell thai-criminal-law < turso/schema.sql
 ```
 
-**2. แก้ไข store helper ใน App.jsx**
+เก็บค่า **URL** (`libsql://...`) และ **token** ไว้ใส่ Cloudflare
 
-เปลี่ยนจาก localStorage เป็น API calls:
+### 2) Environment บน Cloudflare Pages
 
-```javascript
-// เปลี่ยนจาก:
-const store = {
-  async get(k) { ... localStorage ... },
-  async set(k, v) { ... localStorage ... },
-};
+ไปที่ **Workers & Pages** → โปรเจกต์ของคุณ → **Settings** → **Environment variables**
 
-// เป็น:
-const API = import.meta.env.VITE_API_URL;
+| Variable | ใส่เมื่อ | หมายเหตุ |
+|----------|----------|-----------|
+| `VITE_USE_TURSO` | **Build** (Production / Preview) | ค่า `1` — เปิดใช้ API `/api/kv/*` |
+| `TURSO_DATABASE_URL` | **Runtime** (Functions) | URL จาก Turso |
+| `TURSO_AUTH_TOKEN` | **Runtime** (Functions) | เก็บเป็น **Secret** |
 
-const store = {
-  async get(k) {
-    const res = await fetch(`${API}/api/${k}`);
-    return res.ok ? await res.json() : null;
-  },
-  async set(k, v) {
-    await fetch(`${API}/api/${k}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(v),
-    });
-  },
-};
+คัดลอกตัวอย่างจาก `.env.example` — อย่า commit token จริง
+
+### 3) Deploy
+
+โปรเจกต์มี `functions/api/kv/[key].js` และ `wrangler.toml` แล้ว — push ไป Git ที่ผูก Pages หรือรัน:
+
+```bash
+npm run deploy
 ```
 
-**3. เพิ่ม Environment Variable บน Cloudflare Pages**
+### 4) ทดสอบบนเครื่อง (optional)
 
-ไปที่ Dashboard → Workers & Pages → criminal-law → Settings → Environment variables
+สร้าง `.dev.vars` (อย่า commit) ใส่ `TURSO_DATABASE_URL` และ `TURSO_AUTH_TOKEN` จากนั้น:
 
-เพิ่ม:
-- **Variable name**: `VITE_API_URL`
-- **Value**: `https://criminal-law-api.xxxxx.workers.dev`
+```bash
+npm run pages:dev
+```
+
+อีกเทอร์มินัลรัน `npm run dev` — Vite จะ proxy `/api` ไปที่ `localhost:8788`
+
+**ความปลอดภัย:** endpoint `/api/kv/*` ไม่มี login — ใครรู้ URL ก็อ่าน/เขียนชุดข้อมูลเดียวกันได้ ถ้าเป็น production แนะนำใส่ **Cloudflare Access** หน้าเว็บ (ดูด้านล่าง)
 
 ---
 
