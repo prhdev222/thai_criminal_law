@@ -68,61 +68,110 @@ export function splitStatuteParagraphs(fullText) {
   };
 }
 
+function normalizePenaltyFromRecord(penaltyRaw) {
+  if (penaltyRaw == null) return null;
+  const s = String(penaltyRaw).trim();
+  if (!s || s === "—" || s === "-") return null;
+  return s;
+}
+
+/** รวมวรรคจาก p1/p2/remainder เมื่อไม่มี fullText */
+function paragraphsFromParts(paragraph1, paragraph2, remainder) {
+  const out = [];
+  const a = paragraph1 != null ? String(paragraph1).trim() : "";
+  const b = paragraph2 != null ? String(paragraph2).trim() : "";
+  const c = remainder != null ? String(remainder).trim() : "";
+  if (a) out.push(paragraph1);
+  if (b) out.push(paragraph2);
+  if (c) out.push(...splitStatuteParagraphs(c).paragraphs);
+  return out;
+}
+
+/** วรรค1 วรรค2 … ใน statuteArticles.json — fullText มักแยกวรรคด้วย \\n บรรทัดเดียว จึงแยกจากฟิลด์นี้เมื่อจำเป็น */
+function paragraphsFromWankFields(rec) {
+  if (!rec || typeof rec !== "object") return [];
+  const out = [];
+  for (let i = 1; i <= 120; i++) {
+    const key = `วรรค${i}`;
+    if (!Object.prototype.hasOwnProperty.call(rec, key)) break;
+    const t = cleanStatutePdfNoise(String(rec[key] ?? "")).trim();
+    if (!t) break;
+    out.push(t);
+  }
+  return out;
+}
+
 /**
  * รวมข้อมูลจาก statuteArticles.json (ถ้ามี) กับโหนดในแอป
+ * ถ้ามีเรคคอร์ดใน JSON สำหรับเลขมาตรานี้ — ใช้เฉพาะข้อความจาก JSON ไม่ดึง detail สรุปจาก Mind Map มาแทนข้อความตามกฎหมาย
  * @param {object|null} node - section node
- * @param {Record<string, object>} statuteByNum - จาก import JSON
+ * @param {Record<string, object>} statuteByNum - จาก import JSON / fetch public/statuteArticles.json
  */
 export function resolveStatuteParagraphs(node, statuteByNum) {
   const numKey = node?.num != null ? String(node.num).trim() : "";
   const rec = numKey && statuteByNum && typeof statuteByNum === "object" ? statuteByNum[numKey] : null;
 
   if (rec && typeof rec === "object" && Object.keys(rec).length > 0) {
-    let fullText = cleanStatutePdfNoise(rec.fullText ?? rec.detail ?? "");
+    const fullRaw = rec.fullText ?? rec.detail ?? "";
+    let fullText = cleanStatutePdfNoise(fullRaw);
     let paragraph1 = "";
     let paragraph2 = "";
     let remainder = "";
+    let paragraphs = [];
+
+    // ถ้ามี fullText ให้แบ่งวรรคจาก fullText เสมอ — อย่าใช้ paragraph1/2 จาก JSON ทับ
+    // (สกัด PDF มักใส่หมายเหตุ/มาตราอื่นลง paragraph1 ทำให้ ม.2 ม.3 แสดงผิด ทั้งที่ fullText ถูกต้อง)
     if (fullText) {
       const sp = splitStatuteParagraphs(fullText);
       paragraph1 = sp.paragraph1;
       paragraph2 = sp.paragraph2;
       remainder = sp.remainder;
+      paragraphs = sp.paragraphs;
+      const wank = paragraphsFromWankFields(rec);
+      if (
+        wank.length >= 2 &&
+        (sp.paragraphs.length === 1 || wank.length > sp.paragraphs.length)
+      ) {
+        paragraphs = wank;
+        paragraph1 = wank[0] ?? "";
+        paragraph2 = wank[1] ?? "";
+        remainder = wank.length > 2 ? wank.slice(2).join("\n\n") : "";
+      }
     } else {
       paragraph1 = cleanStatutePdfNoise(rec.paragraph1 ?? "");
       paragraph2 = cleanStatutePdfNoise(rec.paragraph2 ?? "");
       remainder = cleanStatutePdfNoise(rec.remainder ?? "");
       fullText = [paragraph1, paragraph2, remainder].filter(Boolean).join("\n\n");
+      paragraphs = paragraphsFromParts(paragraph1, paragraph2, remainder);
     }
+
     const emptyDb = !fullText && !paragraph1 && !paragraph2 && !remainder;
+    const penaltyFromDb = normalizePenaltyFromRecord(rec.penalty);
+
     if (emptyDb) {
-      const src = node?.detail ?? "";
-      if (isArticleStubPlaceholderDetail(src)) {
-        return {
-          paragraph1: "",
-          paragraph2: "",
-          remainder: "",
-          fullText: "",
-          fromDatabase: false,
-          isStubPlaceholder: true,
-        };
-      }
-      const sp = splitStatuteParagraphs(src);
       return {
-        paragraph1: sp.paragraph1,
-        paragraph2: sp.paragraph2,
-        remainder: sp.remainder,
-        fullText: src,
-        fromDatabase: false,
+        paragraph1: "",
+        paragraph2: "",
+        remainder: "",
+        fullText: "",
+        paragraphs: [],
+        fromDatabase: true,
         isStubPlaceholder: false,
+        databaseEntryEmpty: true,
+        penaltyFromDb,
       };
     }
+
     return {
       paragraph1,
       paragraph2,
       remainder,
       fullText,
+      paragraphs,
       fromDatabase: true,
       isStubPlaceholder: false,
+      databaseEntryEmpty: false,
+      penaltyFromDb,
     };
   }
 
@@ -133,8 +182,11 @@ export function resolveStatuteParagraphs(node, statuteByNum) {
       paragraph2: "",
       remainder: "",
       fullText: "",
+      paragraphs: [],
       fromDatabase: false,
       isStubPlaceholder: true,
+      databaseEntryEmpty: false,
+      penaltyFromDb: null,
     };
   }
   const sp = splitStatuteParagraphs(src);
@@ -143,7 +195,10 @@ export function resolveStatuteParagraphs(node, statuteByNum) {
     paragraph2: sp.paragraph2,
     remainder: sp.remainder,
     fullText: src,
+    paragraphs: sp.paragraphs,
     fromDatabase: false,
     isStubPlaceholder: false,
+    databaseEntryEmpty: false,
+    penaltyFromDb: null,
   };
 }

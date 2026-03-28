@@ -11,6 +11,22 @@ import {
 import statuteArticlesSeed from "./statuteArticles.json";
 import { resolveStatuteParagraphs } from "./statuteText.js";
 
+/** ม.1–10: หลัง fetch public/statuteArticles.json ให้ทับ fullText จาก bundle (seed) เสมอ — กันข้อมูล public เก่าที่สลับมาตรา/ปนร่างพระราชบัญญัติ */
+const STATUTE_FIRST_TEN_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
+
+function mergeStatuteFetchedWithSeedFirstTen(prev, fetched) {
+  const base = { ...prev, ...(fetched && typeof fetched === "object" ? fetched : {}) };
+  for (const k of STATUTE_FIRST_TEN_KEYS) {
+    const seed = statuteArticlesSeed[k];
+    if (!seed || typeof seed !== "object") continue;
+    const ft = seed.fullText;
+    if (typeof ft === "string" && ft.trim()) {
+      base[k] = { ...(base[k] || {}), fullText: ft, penalty: seed.penalty ?? base[k]?.penalty };
+    }
+  }
+  return base;
+}
+
 // Storage: localStorage เสมอ + ถ้า VITE_USE_TURSO=1 จะ sync กับ Turso ผ่าน Cloudflare Pages Functions (/api/kv/*)
 const USE_TURSO =
   import.meta.env.VITE_USE_TURSO === "1" || import.meta.env.VITE_USE_TURSO === "true";
@@ -388,11 +404,11 @@ const SECTIONS = stubChapter
 
 // ========== SAMPLE VIDEOS & NOTES ========== (same as before)
 const INIT_VIDEOS = [
-  { id:"v1", youtubeId:"SAMPLE_001", title:"กฎหมายอาญา ม.59 เจตนา อธิบายละเอียด", channel:"ติวกฎหมาย by อ.สมชาย", tags:[], rating:5, status:"watched", favorite:true },
-  { id:"v2", youtubeId:"SAMPLE_002", title:"สรุป ม.68 ป้องกันโดยชอบ + คำพิพากษาสำคัญ", channel:"กฎหมายง่ายนิดเดียว", tags:[], rating:4, status:"watched", favorite:false },
-  { id:"v3", youtubeId:"SAMPLE_003", title:"ม.288-291 ฆ่าผู้อื่น ทำร้ายจนตาย ประมาทตาย แยกความต่าง", channel:"Law Academy TH", tags:[], rating:5, status:"watching", favorite:true },
-  { id:"v4", youtubeId:"SAMPLE_004", title:"ลักทรัพย์ vs ชิงทรัพย์ vs ปล้นทรัพย์ ต่างกันอย่างไร", channel:"อ.วิชัย สอนกฎหมาย", tags:[], rating:4, status:"unwatched", favorite:false },
-  { id:"v5", youtubeId:"SAMPLE_005", title:"ตัวการ ผู้ใช้ ผู้สนับสนุน ม.83-86 สรุปเข้าใจง่าย", channel:"ติวเนติ Channel", tags:[], rating:5, status:"unwatched", favorite:false },
+  { id:"v1", youtubeId:"spo8ecwd9w8", title:"กฎหมายอาญา ม.59 เจตนา อธิบายละเอียด", channel:"ติวกฎหมาย by อ.สมชาย", tags:[], rating:5, status:"watched", favorite:true },
+  { id:"v2", youtubeId:"jNQXAC9IVRw", title:"สรุป ม.68 ป้องกันโดยชอบ + คำพิพากษาสำคัญ (ตัวอย่าง — แก้ ID ในตั้งค่า)", channel:"กฎหมายง่ายนิดเดียว", tags:[], rating:4, status:"watched", favorite:false },
+  { id:"v3", youtubeId:"LXb3EKWsInQ", title:"ม.288-291 ฆ่าผู้อื่น ทำร้ายจนตาย ประมาทตาย แยกความต่าง (ตัวอย่าง)", channel:"Law Academy TH", tags:[], rating:5, status:"watching", favorite:true },
+  { id:"v4", youtubeId:"M7lc1UVf-VE", title:"ลักทรัพย์ vs ชิงทรัพย์ vs ปล้นทรัพย์ ต่างกันอย่างไร (ตัวอย่าง)", channel:"อ.วิชัย สอนกฎหมาย", tags:[], rating:4, status:"unwatched", favorite:false },
+  { id:"v5", youtubeId:"L_jWHffIx5E", title:"ตัวการ ผู้ใช้ ผู้สนับสนุน ม.83-86 สรุปเข้าใจง่าย (ตัวอย่าง)", channel:"ติวเนติ Channel", tags:[], rating:5, status:"unwatched", favorite:false },
 ];
 
 const INIT_NOTES = [
@@ -404,7 +420,7 @@ const INIT_NOTES = [
 // ========== REST OF APP COMPONENTS (same logic, using new data) ==========
 const TC = { part:"bg-amber-500/20 text-amber-400 border-amber-500/30", chapter:"bg-blue-500/20 text-blue-400 border-blue-500/30", division:"bg-teal-500/20 text-teal-400 border-teal-500/30", section:"bg-purple-500/20 text-purple-400 border-purple-500/30" };
 
-/** แสดงวรรคแรก / วรรคสอง / ส่วนที่เหลือ จากฐานข้อมูล (statuteArticles.json) หรือแยกจากฟิลด์ detail ของโหนด */
+/** แสดงวรรค ๑ / วรรค ๒ / … จากการแยกช่องว่างใน fullText (statuteArticles.json) */
 function StatuteParagraphsBlock({ node, statuteByNum, compact }) {
   const r = resolveStatuteParagraphs(node, statuteByNum);
   const textCls = compact
@@ -413,16 +429,27 @@ function StatuteParagraphsBlock({ node, statuteByNum, compact }) {
   const hCls = compact
     ? "text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 mb-1"
     : "text-sm font-semibold text-emerald-600 dark:text-emerald-400 mb-2";
-  const hRemain = compact
-    ? "text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 mb-1"
-    : "text-sm font-semibold text-zinc-500 dark:text-zinc-400 mb-2";
-  if (!r.paragraph1 && !r.paragraph2 && !r.remainder && !r.fullText) return null;
+  const parts = Array.isArray(r.paragraphs) ? r.paragraphs.filter((p) => p != null && String(p).trim()) : [];
+  const hasLegacyBody = !!(r.paragraph1 || r.paragraph2 || r.remainder || r.fullText);
+  if (!hasLegacyBody && parts.length === 0) return null;
   const wrap = compact ? "space-y-2 max-h-52 overflow-y-auto pr-1 border-t border-zinc-200 dark:border-zinc-800/50 pt-2 mt-2" : "space-y-4";
+  if (parts.length > 0) {
+    return (
+      <div className={wrap}>
+        {parts.map((text, i) => (
+          <div key={i}>
+            <h5 className={hCls}>วรรค {arabicNumStrToThaiDigits(String(i + 1))}</h5>
+            <div className={textCls}>{text}</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
   return (
     <div className={wrap}>
       {r.paragraph1 ? (
         <div>
-          <h5 className={hCls}>วรรคแรก</h5>
+          <h5 className={hCls}>วรรค {arabicNumStrToThaiDigits("1")}</h5>
           <div className={textCls}>{r.paragraph1}</div>
         </div>
       ) : r.fullText ? (
@@ -433,13 +460,13 @@ function StatuteParagraphsBlock({ node, statuteByNum, compact }) {
       ) : null}
       {r.paragraph2 ? (
         <div>
-          <h5 className={hCls}>วรรคสอง</h5>
+          <h5 className={hCls}>วรรค {arabicNumStrToThaiDigits("2")}</h5>
           <div className={textCls}>{r.paragraph2}</div>
         </div>
       ) : null}
       {r.remainder ? (
         <div>
-          <h5 className={hRemain}>ส่วนถัดจากวรรคสอง</h5>
+          <h5 className={hCls}>วรรค {arabicNumStrToThaiDigits("3")}</h5>
           <div className={textCls}>{r.remainder}</div>
         </div>
       ) : null}
@@ -470,7 +497,9 @@ const rMd = (t, dark = true) => {
     .replace(/\n/g, "<br/>");
   ytPlaceholders.forEach((yid, i) => {
     const token = `__YT_EMBED_${i}__`;
-    const iframe = `<div style="position:relative;width:100%;max-width:640px;margin:12px 0;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:12px;border:1px solid ${dark ? "#3f3f46" : "#d4d4d8"}"><iframe style="position:absolute;top:0;left:0;width:100%;height:100%" src="https://www.youtube-nocookie.com/embed/${yid}" title="YouTube" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div>`;
+    const watch = `https://www.youtube.com/watch?v=${encodeURIComponent(yid)}`;
+    const embed = `https://www.youtube.com/embed/${encodeURIComponent(yid)}`;
+    const iframe = `<div style="position:relative;width:100%;max-width:640px;margin:12px 0;padding-bottom:56.25%;min-height:200px;height:0;overflow:hidden;border-radius:12px;border:1px solid ${dark ? "#3f3f46" : "#d4d4d8"}"><iframe style="position:absolute;top:0;left:0;width:100%;height:100%" src="${embed}" title="YouTube" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div><div style="margin:0 0 12px;font-size:13px"><a href="${watch}" target="_blank" rel="noopener noreferrer" style="color:${dark ? "#38bdf8" : "#0369a1"}">เปิดใน YouTube (แท็บใหม่)</a></div>`;
     body = body.split(token).join(iframe);
   });
   return body;
@@ -560,18 +589,35 @@ function tagMatchesQuery(raw, ql) {
 function VideoTagChip({ raw }) {
   const p = parseVideoTag(raw);
   const base = "text-[11px] px-2 py-0.5 rounded-md border max-w-full min-w-0";
-  if (p.youtubeId)
+  if (p.youtubeId) {
+    const watch = `https://www.youtube.com/watch?v=${encodeURIComponent(p.youtubeId)}`;
+    const embed = `https://www.youtube.com/embed/${encodeURIComponent(p.youtubeId)}`;
     return (
-      <div className="w-full basis-full min-w-0 rounded-xl overflow-hidden border border-zinc-300 dark:border-zinc-700/60 bg-black aspect-video shadow-sm">
-        <iframe
-          title={p.label || "YouTube"}
-          className="w-full h-full"
-          src={`https://www.youtube-nocookie.com/embed/${p.youtubeId}`}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          allowFullScreen
-        />
+      <div className="w-full basis-full min-w-0 space-y-2">
+        <div className="rounded-xl overflow-hidden border border-zinc-300 dark:border-zinc-700/60 bg-black aspect-video min-h-[200px] shadow-sm">
+          <iframe
+            title={p.label || "YouTube"}
+            className="h-full w-full min-h-[200px]"
+            src={embed}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+            loading="lazy"
+            referrerPolicy="strict-origin-when-cross-origin"
+          />
+        </div>
+        <a
+          href={watch}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="inline-flex items-center gap-1 text-xs text-red-600 dark:text-red-400 hover:underline"
+        >
+          <ExternalLink size={12} className="flex-shrink-0" aria-hidden />
+          เปิดใน YouTube
+        </a>
       </div>
     );
+  }
   if (p.type === "link" && p.href)
     return (
       <a
@@ -803,7 +849,7 @@ export default function App(){
       .then((data)=>{
         if(cancelled||data==null||typeof data!=="object"){ if(!cancelled)setStatuteLoadState("idle"); return; }
         const n=Object.keys(data).filter((k)=>data[k]&&typeof data[k]==="object"&&Object.keys(data[k]).length>0).length;
-        setStatuteByNum((prev)=>({ ...prev,...data }));
+        setStatuteByNum((prev)=>mergeStatuteFetchedWithSeedFirstTen(prev,data));
         setStatuteLoadState(n>0?"ok":"idle");
       })
       .catch(()=>{ if(!cancelled)setStatuteLoadState("idle"); });
@@ -926,6 +972,17 @@ function MindMapV({sections,nn,setNn,vids,nts,focusNodeId,onFocusApplied,statute
   const hasStatuteBody =
     statuteResolved &&
     !!(statuteResolved.fullText || statuteResolved.paragraph1 || statuteResolved.paragraph2 || statuteResolved.remainder);
+  const showStatutePanel =
+    sel?.type === "section" &&
+    statuteResolved &&
+    (hasStatuteBody ||
+      statuteResolved.isStubPlaceholder ||
+      statuteResolved.databaseEntryEmpty ||
+      (!statuteResolved.fromDatabase && !!sel.detail));
+  const effectivePenalty =
+    sel?.type === "section" && statuteResolved
+      ? statuteResolved.penaltyFromDb ?? sel.penalty
+      : sel?.penalty;
   return(
 <div className="flex gap-6" style={{minHeight:"calc(100vh - 160px)"}}>
 <div className="flex-1 min-w-0">
@@ -961,7 +1018,7 @@ aria-expanded={detailPanelFs}
 <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1.5">ฉบับราชกิจจานุเบกษา (เลขไทย): <span className="font-semibold text-zinc-700 dark:text-zinc-300">{matraThaiFromArabic(sel.num)}</span>
 <span className="text-zinc-500 dark:text-zinc-500"> · เลขอารบิก ม.{sel.num}</span></p>)}
 {sel.type!=="section"&&sel.summary&&<p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1.5 leading-relaxed">{sel.summary}</p>}
-{sel.penalty&&sel.penalty!=="—"&&<div className="mt-3 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400 flex items-center gap-2">⚖️ {sel.penalty}</div>}
+{effectivePenalty&&effectivePenalty!=="—"&&<div className="mt-3 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400 flex items-center gap-2">⚖️ {effectivePenalty}</div>}
 {sel.type==="section"&&(()=>{const pg=pdfPageForArticle(sel.num);return(
 <div className="mt-3 flex flex-wrap gap-2">
 {pg!=null?(
@@ -977,21 +1034,30 @@ aria-expanded={detailPanelFs}
 )}</div>
 );})()}
 </div>
-{sel.type==="section"&&(hasStatuteBody||statuteResolved?.isStubPlaceholder||(!statuteResolved?.isStubPlaceholder&&sel.detail))&&(
+{showStatutePanel&&(
 <div className="p-5 border-b border-zinc-200 dark:border-zinc-800/40">
 <h4 className="text-sm font-semibold text-blue-400 mb-2 flex items-center gap-2"><BookOpen size={14}/>ข้อความมาตรา (แยกวรรค)</h4>
-<p className="text-[11px] text-zinc-500 dark:text-zinc-500 mb-3 leading-relaxed">วรรคแรก / วรรคสอง มาจากการแบ่งย่อหน้าในฐานข้อมูล (สกัดจาก PDF) หรือจากข้อความสรุปในแอป — ใช้ตีความตามตัวอักษรเมื่อเป็นข้อความจากฐานข้อมูล</p>
+<p className="text-[11px] text-zinc-500 dark:text-zinc-500 mb-3 leading-relaxed">
+{statuteResolved?.fromDatabase
+  ? "ข้อความด้านล่างมาจาก statuteArticles.json (สกัดจาก PDF) — แบ่งวรรคจาก fullText ใน JSON (ไม่ใช้ paragraph1/2 ดิบจากสกัด เพื่อหลีกเลี่ยงหมายเหตุปนมาตรา)"
+  : "ไม่มีเรคคอร์ดใน statuteArticles.json สำหรับมาตรานี้ — แสดงข้อความจากโหนดในแอป (สรุป/คำอธิบาย)"}
+</p>
 {hasStatuteBody&&<StatuteParagraphsBlock node={sel} statuteByNum={statuteByNum} />}
+{!hasStatuteBody&&statuteResolved?.databaseEntryEmpty&&(
+<p className="text-xs text-amber-700 dark:text-amber-400/90 leading-relaxed">
+มีคีย์มาตราใน <code className="text-[11px] bg-zinc-200/80 dark:bg-zinc-800/60 px-1 rounded">statuteArticles.json</code> แต่ยังไม่มีข้อความ — ลองรัน <code className="text-[11px] bg-zinc-200/80 dark:bg-zinc-800/60 px-1 rounded">npm run extract-statutes</code> ใหม่
+</p>
+)}
 {!hasStatuteBody&&statuteResolved?.isStubPlaceholder&&statuteLoadState==="loading"&&(
 <p className="text-xs text-zinc-500 dark:text-zinc-400">กำลังโหลดข้อความมาตราจาก statuteArticles.json …</p>
 )}
-{!hasStatuteBody&&statuteResolved?.isStubPlaceholder&&statuteLoadState!=="loading"&&(
+{!hasStatuteBody&&statuteResolved?.isStubPlaceholder&&statuteLoadState!=="loading"&&!statuteResolved?.databaseEntryEmpty&&(
 <p className="text-xs text-amber-700 dark:text-amber-400/90 leading-relaxed">
 ยังไม่มีข้อความตามตัวอักษรในเว็บสำหรับมาตรานี้ — วางไฟล์ <code className="text-[11px] bg-zinc-200/80 dark:bg-zinc-800/60 px-1 rounded">public/Criminal_law_update.pdf</code> แล้วรัน <code className="text-[11px] bg-zinc-200/80 dark:bg-zinc-800/60 px-1 rounded">npm run extract-statutes</code>
 (ต้องติดตั้ง Python และ <code className="text-[11px] bg-zinc-200/80 dark:bg-zinc-800/60 px-1 rounded">pip install pypdf</code>) ระบบจะสร้าง <code className="text-[11px] bg-zinc-200/80 dark:bg-zinc-800/60 px-1 rounded">public/statuteArticles.json</code> ให้โหลดอัตโนมัติ
 </p>
 )}
-{statuteResolved?.fromDatabase&&<p className="text-[10px] text-zinc-500 dark:text-zinc-500 mt-3">ที่มาข้อความ: สกัดจาก PDF → statuteArticles.json</p>}
+{statuteResolved?.fromDatabase&&hasStatuteBody&&<p className="text-[10px] text-zinc-500 dark:text-zinc-500 mt-3">ที่มาข้อความ: statuteArticles.json (สกัดจาก PDF)</p>}
 {sel.summary&&<div className="mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-800/50"><p className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400 mb-1">สรุปความในแอป (ไม่ใช่ข้อความตามตัวอักษรของกฎหมาย)</p><p className="text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed">{sel.summary}</p></div>}
 </div>)}
 {sel.type!=="section"&&sel.detail&&<div className="p-5 border-b border-zinc-200 dark:border-zinc-800/40"><h4 className="text-sm font-semibold text-blue-400 mb-2 flex items-center gap-2"><BookOpen size={14}/>รายละเอียด</h4><div className="text-sm text-zinc-400 dark:text-zinc-300 leading-relaxed whitespace-pre-wrap">{sel.detail}</div></div>}
@@ -1171,10 +1237,21 @@ function YTV({vids,setVids}){
 <div className="flex flex-wrap gap-3 mb-5"><div className="flex-1 min-w-[200px] relative"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 dark:text-zinc-500"/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="ค้นหาวิดีโอ..." className="w-full bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 rounded-xl pl-10 pr-4 py-2.5 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none focus:border-amber-500/50"/></div>
 <select value={ft} onChange={e=>setFt(e.target.value)} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-zinc-400 dark:text-zinc-300 outline-none"><option value="">ทุก Tag</option>{at.map(t=><option key={t} value={t}>{tagDisplayLabel(t)}</option>)}</select>
 <select value={fs} onChange={e=>setFs(e.target.value)} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-zinc-400 dark:text-zinc-300 outline-none"><option value="">ทุกสถานะ</option><option value="unwatched">ยังไม่ดู</option><option value="watching">กำลังดู</option><option value="watched">ดูแล้ว</option></select></div>
-<div className="grid grid-cols-1 md:grid-cols-2 gap-4">{fl.map(v=>{const I=SI[v.status];return(
+<div className="grid grid-cols-1 md:grid-cols-2 gap-4">{fl.map(v=>{const I=SI[v.status];const yidCard=extractYoutubeVideoId(v.youtubeId);const watchUrl=yidCard?`https://www.youtube.com/watch?v=${encodeURIComponent(yidCard)}`:null;return(
 <div key={v.id} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/40 rounded-2xl overflow-hidden hover:border-zinc-300 dark:border-zinc-700/60 transition-all group">
-<div className="relative"><div className="aspect-video bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center"><img src={`https://img.youtube.com/vi/${v.youtubeId}/mqdefault.jpg`} alt="" className="w-full h-full object-cover opacity-80" onError={e=>{e.target.style.display="none";}}/><div className="absolute inset-0 flex items-center justify-center bg-black/30"><PlayCircle size={48} className="text-white/80"/></div></div><button onClick={()=>uv(v.id,{favorite:!v.favorite})} className="absolute top-3 right-3"><Star size={20} className={v.favorite?"text-amber-400 fill-amber-400":"text-white/40"}/></button></div>
-<div className="p-4"><h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 leading-snug mb-1 line-clamp-2">{v.title}</h3><p className="text-xs text-zinc-500 dark:text-zinc-500 mb-3">{v.channel}</p>
+<div className="relative">
+{watchUrl?(
+<a href={watchUrl} target="_blank" rel="noopener noreferrer" className="block aspect-video bg-zinc-200 dark:bg-zinc-800 relative outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-inset" aria-label={`เปิดวิดีโอใน YouTube — ${v.title}`}>
+<img src={`https://img.youtube.com/vi/${yidCard}/mqdefault.jpg`} alt="" className="h-full w-full object-cover opacity-90" onError={e=>{e.target.style.display="none";}}/>
+<div className="absolute inset-0 flex items-center justify-center bg-black/25 transition-colors group-hover:bg-black/35"><PlayCircle size={48} className="text-white drop-shadow-md"/></div>
+</a>
+):(
+<div className="flex aspect-video items-center justify-center bg-zinc-200 dark:bg-zinc-800"><p className="px-4 text-center text-xs text-zinc-500 dark:text-zinc-500">ใส่ลิงก์หรือ Video ID ที่ถูกต้อง (11 ตัว) ในตั้งค่า — ตัวอย่าง SAMPLE_* เปิดไม่ได้</p></div>
+)}
+<button type="button" onClick={(e)=>{e.preventDefault();e.stopPropagation();uv(v.id,{favorite:!v.favorite});}} className="absolute top-3 right-3 z-10 rounded-lg bg-black/40 p-1 hover:bg-black/55" aria-label="ติดดาว"><Star size={20} className={v.favorite?"text-amber-400 fill-amber-400":"text-white/90"}/></button>
+</div>
+<div className="p-4"><h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 leading-snug mb-1 line-clamp-2">{v.title}</h3><p className="text-xs text-zinc-500 dark:text-zinc-500 mb-2">{v.channel}</p>
+{watchUrl&&<a href={watchUrl} target="_blank" rel="noopener noreferrer" className="mb-3 inline-flex items-center gap-1 text-xs font-medium text-red-600 hover:underline dark:text-red-400"><ExternalLink size={12} aria-hidden/>เปิดใน YouTube</a>}
 <div className="flex flex-wrap gap-1.5 mb-3">{v.tags.map((t,i)=><VideoTagChip key={`${v.id}-tag-${i}`} raw={t}/>)}</div>
 <div className="flex items-center justify-between"><button onClick={()=>{const nx=v.status==="unwatched"?"watching":v.status==="watching"?"watched":"unwatched";uv(v.id,{status:nx});}} className={`flex items-center gap-1.5 text-xs ${SC[v.status]}`}><I size={14}/>{v.status==="unwatched"?"ยังไม่ดู":v.status==="watching"?"กำลังดู":"ดูแล้ว"}</button>
 <div className="flex gap-1.5"><span className="text-xs text-amber-400">{"★".repeat(v.rating)}{"☆".repeat(5-v.rating)}</span><button onClick={()=>dv(v.id)} className="text-zinc-500 dark:text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100"><Trash2 size={14}/></button></div></div></div></div>);})}</div>
@@ -1361,9 +1438,26 @@ function SV({sections,vids,nts,onOpenMindMap,statuteByNum,statuteLoadState}){
 {sr.length>0&&<div className="mb-6"><h3 className="text-sm font-semibold text-purple-400 mb-3 flex items-center gap-2"><BookOpen size={14}/>มาตรา ({sr.length})</h3><div className="space-y-2">{sr.map(s=>{const pg=s.num!=null?pdfPageForArticle(s.num):null;const r=s.type==="section"?resolveStatuteParagraphs(s,statuteByNum):null;const hb=r&&!!(r.fullText||r.paragraph1||r.paragraph2||r.remainder);return(
 <div key={s.id} role="button" tabIndex={0} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();onOpenMindMap(s.id);}}} onClick={()=>onOpenMindMap(s.id)} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/40 rounded-xl p-4 hover:border-amber-600/50 dark:hover:border-amber-500/35 cursor-pointer transition-all text-left w-full">
 <div className="flex items-center gap-2 mb-1 flex-wrap"><span className={`text-[11px] font-semibold px-2 py-0.5 rounded-md border ${TC[s.type]}`}>{s.type==="section"&&s.num!=null?matraThaiFromArabic(s.num):s.num?`ม.${s.num}`:s.type}</span>{s.type==="section"&&s.num!=null&&<span className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400 tabular-nums">ม.{s.num}</span>}<span className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">{s.label}</span></div>
-{s.type==="section"&&(hb?<StatuteParagraphsBlock node={s} statuteByNum={statuteByNum} compact/>:r?.isStubPlaceholder&&statuteLoadState==="loading"?<p className="text-xs text-zinc-500 dark:text-zinc-400">กำลังโหลดข้อความมาตรา…</p>:s.summary?<p className="text-xs text-zinc-500 dark:text-zinc-400">{s.summary}</p>:null)}
-{s.type==="section"&&s.summary&&(hb||(s.detail&&!r?.isStubPlaceholder))&&<p className="text-[10px] text-zinc-500 dark:text-zinc-500 mt-1 italic">สรุปในแอป (ไม่ใช่ข้อความตามตัวอักษร): {s.summary}</p>}
-{s.penalty&&s.penalty!=="—"&&<p className="text-xs text-red-400 mt-1">⚖️ {s.penalty}</p>}
+{s.type==="section"&&(hb ? (
+<StatuteParagraphsBlock node={s} statuteByNum={statuteByNum} compact/>
+) : r?.databaseEntryEmpty ? (
+<p className="text-xs text-amber-700 dark:text-amber-400/90">มีคีย์ใน statuteArticles.json แต่ยังไม่มีข้อความมาตรา</p>
+) : r?.isStubPlaceholder ? (
+statuteLoadState === "loading" ? (
+<p className="text-xs text-zinc-500 dark:text-zinc-400">กำลังโหลดข้อความมาตรา…</p>
+) : s.summary ? (
+<p className="text-xs text-zinc-500 dark:text-zinc-400">{s.summary}</p>
+) : (
+<p className="text-xs text-amber-700 dark:text-amber-400/90">ยังไม่มีข้อความมาตราใน statuteArticles.json</p>
+)
+) : r?.fromDatabase ? null : s.summary ? (
+<p className="text-xs text-zinc-500 dark:text-zinc-400">{s.summary}</p>
+) : null)}
+{s.type==="section"&&s.summary&&(hb||(!r?.fromDatabase&&(s.detail&&!r?.isStubPlaceholder)))&&<p className="text-[10px] text-zinc-500 dark:text-zinc-500 mt-1 italic">สรุปในแอป (ไม่ใช่ข้อความตามตัวอักษร): {s.summary}</p>}
+{(() => {
+  const rp = s.type === "section" && r ? r.penaltyFromDb ?? s.penalty : s.penalty;
+  return rp && rp !== "—" ? <p className="text-xs text-red-400 mt-1">⚖️ {rp}</p> : null;
+})()}
 {pg!=null&&<a href={criminalLawPdfUrl(pg)} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()} className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 dark:text-sky-300 hover:underline"><ExternalLink size={12} aria-hidden />PDF หน้า {pg}</a>}
 {mmHint("เปิดใน Mind Map")}</div>
 );})}</div></div>}
