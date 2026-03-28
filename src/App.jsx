@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useCallback } from "react";
-import { Search, BookOpen, Youtube, Map, FileText, Plus, Minus, X, ChevronRight, ChevronDown, Star, Edit3, Trash2, Tag, Clock, Save, PlayCircle, ArrowLeft, Sparkles, MessageSquare, CheckCircle, Circle, ExternalLink, Sun, Moon, Lock } from "lucide-react";
+import { Search, BookOpen, Youtube, Map, FileText, Plus, Minus, X, ChevronRight, ChevronDown, Star, Edit3, Trash2, Tag, Clock, Save, PlayCircle, ArrowLeft, Sparkles, MessageSquare, CheckCircle, Circle, ExternalLink, Sun, Moon, Lock, Settings } from "lucide-react";
 import { pdfPageForArticle, criminalLawPdfUrl, CRIMINAL_LAW_PDF } from "./articlePdfPages.js";
 
 // Storage: localStorage เสมอ + ถ้า VITE_USE_TURSO=1 จะ sync กับ Turso ผ่าน Cloudflare Pages Functions (/api/kv/*)
@@ -304,11 +304,11 @@ const SECTIONS = [
 
 // ========== SAMPLE VIDEOS & NOTES ========== (same as before)
 const INIT_VIDEOS = [
-  { id:"v1", youtubeId:"SAMPLE_001", title:"กฎหมายอาญา ม.59 เจตนา อธิบายละเอียด", channel:"ติวกฎหมาย by อ.สมชาย", tags:["เจตนา","ม.59","พื้นฐาน"], rating:5, status:"watched", favorite:true },
-  { id:"v2", youtubeId:"SAMPLE_002", title:"สรุป ม.68 ป้องกันโดยชอบ + คำพิพากษาสำคัญ", channel:"กฎหมายง่ายนิดเดียว", tags:["ป้องกัน","ม.68","คำพิพากษา"], rating:4, status:"watched", favorite:false },
-  { id:"v3", youtubeId:"SAMPLE_003", title:"ม.288-291 ฆ่าผู้อื่น ทำร้ายจนตาย ประมาทตาย แยกความต่าง", channel:"Law Academy TH", tags:["ม.288","ฆ่า","ข้อสอบเนติ"], rating:5, status:"watching", favorite:true },
-  { id:"v4", youtubeId:"SAMPLE_004", title:"ลักทรัพย์ vs ชิงทรัพย์ vs ปล้นทรัพย์ ต่างกันอย่างไร", channel:"อ.วิชัย สอนกฎหมาย", tags:["ม.334","ม.339","ม.340","ทรัพย์"], rating:4, status:"unwatched", favorite:false },
-  { id:"v5", youtubeId:"SAMPLE_005", title:"ตัวการ ผู้ใช้ ผู้สนับสนุน ม.83-86 สรุปเข้าใจง่าย", channel:"ติวเนติ Channel", tags:["ม.83","ตัวการ","ผู้สนับสนุน","พื้นฐาน"], rating:5, status:"unwatched", favorite:false },
+  { id:"v1", youtubeId:"SAMPLE_001", title:"กฎหมายอาญา ม.59 เจตนา อธิบายละเอียด", channel:"ติวกฎหมาย by อ.สมชาย", tags:[], rating:5, status:"watched", favorite:true },
+  { id:"v2", youtubeId:"SAMPLE_002", title:"สรุป ม.68 ป้องกันโดยชอบ + คำพิพากษาสำคัญ", channel:"กฎหมายง่ายนิดเดียว", tags:[], rating:4, status:"watched", favorite:false },
+  { id:"v3", youtubeId:"SAMPLE_003", title:"ม.288-291 ฆ่าผู้อื่น ทำร้ายจนตาย ประมาทตาย แยกความต่าง", channel:"Law Academy TH", tags:[], rating:5, status:"watching", favorite:true },
+  { id:"v4", youtubeId:"SAMPLE_004", title:"ลักทรัพย์ vs ชิงทรัพย์ vs ปล้นทรัพย์ ต่างกันอย่างไร", channel:"อ.วิชัย สอนกฎหมาย", tags:[], rating:4, status:"unwatched", favorite:false },
+  { id:"v5", youtubeId:"SAMPLE_005", title:"ตัวการ ผู้ใช้ ผู้สนับสนุน ม.83-86 สรุปเข้าใจง่าย", channel:"ติวเนติ Channel", tags:[], rating:5, status:"unwatched", favorite:false },
 ];
 
 const INIT_NOTES = [
@@ -452,6 +452,18 @@ function parseArticleNumFromSearchQuery(raw) {
 
 const FONT_STEPS = [90, 100, 110, 125];
 
+const DEFAULT_APP_META = {
+  title: "เรียนกฎหมายอาญา",
+  subtitle: "ประมวลกฎหมายอาญา พ.ศ. ๒๔๙๙ (แก้ไขถึง พ.ศ. ๒๕๖๔)",
+};
+
+function parseTagsInput(str) {
+  return String(str)
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
 /** รหัสเข้าใช้งาน (แก้ไข/เพิ่ม/ลดข้อมูลในแอป) — เปลี่ยนได้ที่นี่หรือผ่าน VITE_APP_ACCESS_CODE */
 const APP_ACCESS_CODE = import.meta.env.VITE_APP_ACCESS_CODE ?? "111555";
 const ACCESS_SESSION_KEY = "thai_criminal_law_access_v1";
@@ -468,6 +480,7 @@ export default function App(){
   const [vids,setVids]=useState(INIT_VIDEOS);
   const [nts,setNts]=useState(INIT_NOTES);
   const [nn,setNn]=useState({});
+  const [appMeta,setAppMeta]=useState(() => ({ ...DEFAULT_APP_META }));
   const [ld,setLd]=useState(false);
   const tryUnlock=useCallback(()=>{
     if(String(gatePw).trim()===String(APP_ACCESS_CODE).trim()){
@@ -489,13 +502,29 @@ export default function App(){
   },[fontPct]);
   useEffect(()=>{
     if(!accessOk)return;
-    (async()=>{ const a=await store.get("v2");const b=await store.get("n2");const c=await store.get("nn2"); if(a)setVids(a);if(b)setNts(b);if(c)setNn(c);setLd(true);})();
+    (async()=>{
+      const a=await store.get("v2");
+      const b=await store.get("n2");
+      const c=await store.get("nn2");
+      const m=await store.get("m2");
+      if(a)setVids(a);
+      if(b)setNts(b);
+      if(c)setNn(c);
+      if(m&&typeof m==="object"){
+        setAppMeta({
+          title:String(m.title??DEFAULT_APP_META.title),
+          subtitle:String(m.subtitle??DEFAULT_APP_META.subtitle),
+        });
+      }
+      setLd(true);
+    })();
   },[accessOk]);
   useEffect(()=>{if(ld)store.set("v2",vids);},[vids,ld]);
   useEffect(()=>{if(ld)store.set("n2",nts);},[nts,ld]);
   useEffect(()=>{if(ld)store.set("nn2",nn);},[nn,ld]);
+  useEffect(()=>{if(ld)store.set("m2",appMeta);},[appMeta,ld]);
   const st={s:cntS(SECTIONS),v:vids.length,w:vids.filter(v=>v.status==="watched").length,n:nts.length};
-  const tabs=[{id:"mindmap",icon:Map,l:"Mind Map"},{id:"youtube",icon:Youtube,l:"YouTube"},{id:"lectures",icon:FileText,l:"Lecture Notes"},{id:"search",icon:Search,l:"ค้นหา"}];
+  const tabs=[{id:"mindmap",icon:Map,l:"Mind Map"},{id:"youtube",icon:Youtube,l:"YouTube"},{id:"lectures",icon:FileText,l:"Lecture Notes"},{id:"search",icon:Search,l:"ค้นหา"},{id:"settings",icon:Settings,l:"ตั้งค่า"}];
   const stepFont=(d)=>{ const i=FONT_STEPS.indexOf(fontPct); const ni=Math.min(FONT_STEPS.length-1,Math.max(0,i+d)); setFontPct(FONT_STEPS[ni]); };
   if(!accessOk){
     return(
@@ -514,7 +543,7 @@ export default function App(){
 <div className="min-h-screen bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-200 transition-colors" style={{fontFamily:"'Sarabun','Noto Sans Thai',sans-serif"}}>
 <header className="border-b border-zinc-200 dark:border-zinc-800/60 bg-white/90 dark:bg-zinc-950/80 backdrop-blur-xl sticky top-0 z-50">
 <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
-<div className="flex items-center gap-3 min-w-0"><div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/20 flex items-center justify-center text-lg shrink-0">⚖️</div><div className="min-w-0"><h1 className="text-base font-bold text-zinc-900 dark:text-zinc-100 leading-tight">เรียนกฎหมายอาญา</h1><p className="text-[11px] text-zinc-600 dark:text-zinc-500">ประมวลกฎหมายอาญา พ.ศ. ๒๔๙๙ (แก้ไขถึง พ.ศ. ๒๕๖๔)</p></div></div>
+<div className="flex items-center gap-3 min-w-0"><div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/20 flex items-center justify-center text-lg shrink-0">⚖️</div><div className="min-w-0"><h1 className="text-base font-bold text-zinc-900 dark:text-zinc-100 leading-tight">{appMeta.title||DEFAULT_APP_META.title}</h1><p className="text-[11px] text-zinc-600 dark:text-zinc-500">{appMeta.subtitle||DEFAULT_APP_META.subtitle}</p></div></div>
 <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-end">
 <div className="flex items-center rounded-xl border border-zinc-200 dark:border-zinc-700/50 bg-zinc-100/80 dark:bg-zinc-800/40 p-0.5" title="ขนาดตัวอักษร">
 <button type="button" onClick={()=>stepFont(-1)} disabled={fontPct<=FONT_STEPS[0]} className="p-1.5 rounded-lg text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700/60 disabled:opacity-30" aria-label="ลดขนาดตัวอักษร"><Minus size={16}/></button>
@@ -539,6 +568,7 @@ export default function App(){
 {tab==="youtube"&&<YTV vids={vids} setVids={setVids}/>}
 {tab==="lectures"&&<LV nts={nts} setNts={setNts} sections={SECTIONS} isDark={theme==="dark"}/>}
 {tab==="search"&&<SV sections={SECTIONS} vids={vids} nts={nts} onOpenMindMap={(id)=>{setMmTargetId(id);setTab("mindmap");}}/>}
+{tab==="settings"&&<SettingsV vids={vids} setVids={setVids} appMeta={appMeta} setAppMeta={setAppMeta}/>}
 </main></div>);
 }
 
@@ -601,6 +631,138 @@ function MindMapV({sections,nn,setNn,vids,nts,focusNodeId,onFocusApplied}){
 )}</div></div>);
 }
 
+function SettingsV({ vids, setVids, appMeta, setAppMeta }) {
+  const uv = (id, u) => setVids(vids.map((x) => (x.id === id ? { ...x, ...u } : x)));
+  const dv = (id) => {
+    if (!confirm("ลบวิดีโอรายการนี้?")) return;
+    setVids(vids.filter((x) => x.id !== id));
+  };
+  return (
+    <div>
+      <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2 mb-2">
+        <Settings size={20} className="text-amber-500" />
+        ตั้งค่า
+      </h2>
+      <p className="text-sm text-zinc-500 dark:text-zinc-500 mb-6">แก้ข้อความหัวเว็บ และแก้ชื่อวิดีโอ / ช่อง / tag ที่คุณใส่เอง / Video ID — บันทึกอัตโนมัติ</p>
+      <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800/60 bg-zinc-100/90 dark:bg-zinc-900/50 p-5 mb-8">
+        <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 mb-3 flex items-center gap-2">
+          <Tag size={14} className="text-amber-500" />
+          ข้อความหัวเว็บ
+        </h3>
+        <label className="block text-xs text-zinc-500 dark:text-zinc-500 mb-1">หัวข้อหลัก</label>
+        <input
+          value={appMeta.title}
+          onChange={(e) => setAppMeta({ ...appMeta, title: e.target.value })}
+          className="w-full mb-3 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800/60 px-3 py-2.5 text-sm text-zinc-900 dark:text-zinc-100 outline-none focus:border-amber-500/50"
+        />
+        <label className="block text-xs text-zinc-500 dark:text-zinc-500 mb-1">บรรทัดรอง (คำอธิบายใต้หัวข้อ)</label>
+        <input
+          value={appMeta.subtitle}
+          onChange={(e) => setAppMeta({ ...appMeta, subtitle: e.target.value })}
+          className="w-full rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800/60 px-3 py-2.5 text-sm text-zinc-900 dark:text-zinc-100 outline-none focus:border-amber-500/50"
+        />
+        <button
+          type="button"
+          onClick={() => setAppMeta({ ...DEFAULT_APP_META })}
+          className="mt-3 text-xs text-zinc-500 dark:text-zinc-400 hover:text-amber-600 dark:hover:text-amber-400"
+        >
+          คืนค่าเริ่มต้นหัวเว็บ
+        </button>
+      </div>
+      <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 mb-3 flex items-center gap-2">
+        <Youtube size={14} className="text-red-500" />
+        วิดีโอ ({vids.length} รายการ)
+      </h3>
+      <div className="space-y-4">
+        {vids.map((v) => (
+          <div
+            key={v.id}
+            className="rounded-2xl border border-zinc-200 dark:border-zinc-800/60 bg-zinc-100/90 dark:bg-zinc-900/50 p-4 space-y-3"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <span className="text-[11px] font-mono text-zinc-500 dark:text-zinc-500 truncate">{v.id}</span>
+              <button
+                type="button"
+                onClick={() => dv(v.id)}
+                className="shrink-0 flex items-center gap-1 text-xs text-red-600 dark:text-red-400 hover:underline"
+              >
+                <Trash2 size={12} aria-hidden />
+                ลบ
+              </button>
+            </div>
+            <input
+              value={v.title}
+              onChange={(e) => uv(v.id, { title: e.target.value })}
+              placeholder="ชื่อวิดีโอ"
+              className="w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800/60 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 outline-none focus:border-amber-500/50"
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <input
+                value={v.channel}
+                onChange={(e) => uv(v.id, { channel: e.target.value })}
+                placeholder="ชื่อช่อง"
+                className="w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800/60 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 outline-none focus:border-amber-500/50"
+              />
+              <input
+                value={v.youtubeId}
+                onChange={(e) => uv(v.id, { youtubeId: e.target.value.trim() })}
+                placeholder="YouTube Video ID"
+                className="w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800/60 px-3 py-2 text-sm font-mono text-zinc-900 dark:text-zinc-100 outline-none focus:border-amber-500/50"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-zinc-500 dark:text-zinc-500 mb-1">Tag (พิมพ์เอง คั่นด้วย comma)</label>
+              <textarea
+                value={v.tags.join(", ")}
+                onChange={(e) => uv(v.id, { tags: parseTagsInput(e.target.value) })}
+                rows={2}
+                className="w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800/60 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 outline-none focus:border-amber-500/50 resize-y min-h-[52px]"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-xs text-zinc-500 dark:text-zinc-500">คะแนน:</span>
+              <div className="flex gap-0.5">
+                {[1, 2, 3, 4, 5].map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => uv(v.id, { rating: r })}
+                    className={`text-lg leading-none ${r <= v.rating ? "text-amber-400" : "text-zinc-500 dark:text-zinc-600"}`}
+                    aria-label={`${r} ดาว`}
+                  >
+                    ★
+                  </button>
+                ))}
+              </div>
+              <label className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400 cursor-pointer ml-2">
+                <input
+                  type="checkbox"
+                  checked={!!v.favorite}
+                  onChange={(e) => uv(v.id, { favorite: e.target.checked })}
+                  className="accent-amber-500 rounded"
+                />
+                ติดดาว
+              </label>
+              <select
+                value={v.status}
+                onChange={(e) => uv(v.id, { status: e.target.value })}
+                className="ml-auto rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800/60 px-2 py-1.5 text-xs text-zinc-800 dark:text-zinc-200 outline-none"
+              >
+                <option value="unwatched">ยังไม่ดู</option>
+                <option value="watching">กำลังดู</option>
+                <option value="watched">ดูแล้ว</option>
+              </select>
+            </div>
+          </div>
+        ))}
+      </div>
+      {vids.length === 0 && (
+        <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8">ยังไม่มีวิดีโอ — ไปแท็บ YouTube แล้วกด «เพิ่มวิดีโอ»</p>
+      )}
+    </div>
+  );
+}
+
 function TN({n,d,ex,tog,sel,setSel,nn}){
   const hc=n.children&&n.children.length>0;const ie=ex.has(n.id);const is=sel?.id===n.id;const nc=(nn[n.id]||[]).length;
   const cl={part:"border-l-amber-500",chapter:"border-l-blue-500",division:"border-l-teal-500",section:"border-l-purple-400"};
@@ -646,8 +808,8 @@ function AVF({onAdd,onCancel}){
   return(<div className="bg-white/95 dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-2xl p-5 mb-5"><h3 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 mb-4">เพิ่มวิดีโอใหม่</h3>
 <div className="grid grid-cols-2 gap-3 mb-3"><input value={f.youtubeId} onChange={e=>sF({...f,youtubeId:e.target.value})} placeholder="YouTube Video ID" className="bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none"/><input value={f.channel} onChange={e=>sF({...f,channel:e.target.value})} placeholder="Channel" className="bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none"/></div>
 <input value={f.title} onChange={e=>sF({...f,title:e.target.value})} placeholder="ชื่อวิดีโอ *" className="w-full bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none mb-3"/>
-<input value={f.tags} onChange={e=>sF({...f,tags:e.target.value})} placeholder="Tags: ม.288, ฆ่า หรือ สรุป Doc|https://docs.google.com/... หรือวาง URL PDF โดยตรง" className="w-full bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none mb-3"/>
-<p className="text-[11px] text-zinc-500 dark:text-zinc-500 mb-3 leading-relaxed">ลิงก์ Google Doc / Drive / PDF: วาง URL ทั้งบรรทัด หรือใช้รูปแบบ <span className="text-zinc-500 dark:text-zinc-400">ชื่อที่แสดง|https://...</span> (คั่น tag หลายอันด้วย comma)</p>
+<input value={f.tags} onChange={e=>sF({...f,tags:e.target.value})} placeholder="Tag — พิมพ์เอง คั่นแต่ละอันด้วย comma" className="w-full bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none mb-3"/>
+<p className="text-[11px] text-zinc-500 dark:text-zinc-500 mb-3 leading-relaxed">ถ้าต้องการแสดงเป็นลิงก์ ใช้รูปแบบ ชื่อที่แสดง|URL ในช่อง tag (คั่นหลาย tag ด้วย comma)</p>
 <div className="flex items-center gap-3 mb-4"><span className="text-xs text-zinc-500 dark:text-zinc-500">คะแนน:</span>{[1,2,3,4,5].map(r=><button key={r} onClick={()=>sF({...f,rating:r})} className={`text-lg ${r<=f.rating?"text-amber-400":"text-zinc-500 dark:text-zinc-600"}`}>★</button>)}</div>
 <div className="flex gap-2 justify-end"><button onClick={onCancel} className="px-4 py-2 text-sm text-zinc-500 dark:text-zinc-400">ยกเลิก</button><button onClick={()=>{if(!f.title.trim())return;onAdd({id:"v"+Date.now(),youtubeId:f.youtubeId||"dQw4w9WgXcQ",title:f.title,channel:f.channel,tags:f.tags.split(",").map(t=>t.trim()).filter(Boolean),rating:f.rating,status:"unwatched",favorite:false});}} className="px-4 py-2 bg-red-500/20 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/30 border border-red-500/20">บันทึก</button></div></div>);
 }
@@ -728,7 +890,7 @@ function SV({sections,vids,nts,onOpenMindMap}){
 <div key={v.id} role="button" tabIndex={0} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();onOpenMindMap(sec?.id??null);}}} onClick={()=>onOpenMindMap(sec?.id??null)} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/40 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3 hover:border-amber-600/50 dark:hover:border-amber-500/35 cursor-pointer transition-all text-left w-full">
 <div className="flex items-center gap-3 flex-1 min-w-0"><PlayCircle size={20} className="text-red-400 flex-shrink-0"/><div className="flex-1 min-w-0"><p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate">{v.title}</p><p className="text-xs text-zinc-500 dark:text-zinc-500">{v.channel} • {v.tags.map(tagDisplayLabel).join(", ")}</p></div></div>
 {vpg!=null&&<a href={criminalLawPdfUrl(vpg)} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()} className="inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 dark:text-sky-300 hover:underline sm:ml-auto"><ExternalLink size={12} aria-hidden />PDF ม.{sec.num} หน้า {vpg}</a>}
-{mmHint(sec?"ไปมาตราที่เกี่ยวข้องใน Mind Map":"เปิด Mind Map (ระบุ tag ม.XXX เพื่อโฟกัสมาตรา)")}</div>);})}</div></div>}
+{mmHint(sec?"ไปมาตราที่เกี่ยวข้องใน Mind Map":"เปิด Mind Map (ใส่ tag ที่มีเลขมาตราในวิดีโอเพื่อโฟกัส)")}</div>);})}</div></div>}
 {nr.length>0&&<div className="mb-6"><h3 className="text-sm font-semibold text-blue-400 mb-3 flex items-center gap-2"><FileText size={14}/>Lecture Notes ({nr.length})</h3><div className="space-y-2">{nr.map(n=>{const sn=n.sectionId?findNodeById(sections,n.sectionId):null;const npg=sn?.type==="section"&&sn.num!=null?pdfPageForArticle(sn.num):null;return(
 <div key={n.id} role="button" tabIndex={0} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();onOpenMindMap(n.sectionId||null);}}} onClick={()=>onOpenMindMap(n.sectionId||null)} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/40 rounded-xl p-4 hover:border-amber-600/50 dark:hover:border-amber-500/35 cursor-pointer transition-all text-left w-full">
 <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">{n.title}</p><p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">{n.content.replace(/[#*]/g,"").substring(0,100)}...</p>
