@@ -254,7 +254,8 @@ npm run deploy
    - `TURSO_DATABASE_URL`  
    - `TURSO_AUTH_TOKEN` (ตั้งเป็น Sensitive / ซ่อนค่า)  
 3. Build: โปรเจกต์มี `vercel.json` (output `dist`) และโฟลเดอร์ **`api/`** — Vercel จะ map `/api/user-data` และ `/api/kv/:key` ให้อัตโนมัติ  
-4. `VITE_USE_TURSO` ยังฝังจาก `.env.production` / `wrangler.toml` `[vars]` เหมือนเดิม (ไม่ต้องพึ่ง Secret ของ Vercel สำหรับตัวนี้)
+4. `VITE_USE_TURSO` ยังฝังจาก `.env.production` / `wrangler.toml` `[vars]` เหมือนเดิม (ไม่ต้องพึ่ง Secret ของ Vercel สำหรับตัวนี้)  
+5. **ไดรเวอร์:** `lib/tursoClient.js` ใช้ `@libsql/client/web` (HTTP) ตาม [เอกสาร Turso สำหรับ Vercel](https://docs.turso.tech/integrations/vercel) — อย่าใช้แพ็กเกจหลักแบบ Node-only บน Serverless เพราะอาจ query ไม่สำเร็จแม้ Dashboard บอกว่าเชื่อม Turso แล้ว
 
 ทดสอบท้องถิ่นแบบรวม API: `vercel dev` (พอร์ตมาตรฐาน 3000) — ไม่ใช้ proxy 8788 แบบ Cloudflare
 
