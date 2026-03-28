@@ -1,4 +1,4 @@
-import { createClient } from "@libsql/client";
+import { createTursoClient } from "../../../lib/tursoClient.js";
 
 const ALLOWED_KEYS = new Set(["v2", "n2", "nn2", "m2"]);
 
@@ -9,19 +9,13 @@ function json(body, status = 200) {
   });
 }
 
-function getClient(env) {
-  const url = env.TURSO_DATABASE_URL;
-  const authToken = env.TURSO_AUTH_TOKEN;
-  if (!url || !authToken) return null;
-  return createClient({ url, authToken });
-}
-
 export async function onRequestGet(context) {
   const key = context.params.key;
   if (!ALLOWED_KEYS.has(key)) return json({ error: "invalid key" }, 404);
 
-  const client = getClient(context.env);
-  if (!client) return json({ error: "database not configured" }, 503);
+  const { client, missing } = createTursoClient(context.env);
+  if (!client)
+    return json({ error: "database not configured", missing }, 503);
 
   try {
     const rs = await client.execute({
@@ -46,8 +40,9 @@ export async function onRequestPut(context) {
   const key = context.params.key;
   if (!ALLOWED_KEYS.has(key)) return json({ error: "invalid key" }, 404);
 
-  const client = getClient(context.env);
-  if (!client) return json({ error: "database not configured" }, 503);
+  const { client, missing } = createTursoClient(context.env);
+  if (!client)
+    return json({ error: "database not configured", missing }, 503);
 
   let payload;
   try {

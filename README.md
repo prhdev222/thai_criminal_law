@@ -206,10 +206,13 @@ criminal-law-frontend/
 
 ---
 
-## 🔌 Turso + Cloudflare Pages (sync ข้อมูลข้ามเครื่อง)
+## 🔌 Turso + Cloudflare Pages หรือ Vercel (sync ข้อมูลข้ามเครื่อง)
 
 แอปเก็บข้อมูลผู้ใช้ที่ key `v2` (วิดีโอ YouTube), `n2` (lecture notes), `nn2` (บันทึก mind map), `m2` (หัวเว็บ) — โดยค่าเริ่มต้นใช้ **localStorage**  
 ถ้าเปิด **`VITE_USE_TURSO=1`** ตอน build จะอ่าน/เขียน **เฉพาะ Turso** — โหลดครั้งแรกใช้ **`GET /api/user-data`** (ดึง `v2`/`n2`/`nn2`/`m2` ในคำขอเดียว) การบันทึกใช้ **`PUT /api/kv/{key}`** · ไม่ fallback ไป localStorage · ฐานว่างจะได้รายการว่าง ไม่ใช่ข้อมูลตัวอย่างใน bundle
+
+- **Cloudflare Pages:** `functions/api/*` (Wrangler)  
+- **Vercel:** `api/*` (Serverless Node) — โค้ด Turso ใช้ร่วมผ่าน `lib/tursoClient.js`
 
 ### 1) สร้างฐานข้อมูล Turso + schema
 
@@ -222,7 +225,7 @@ turso db shell thai-criminal-law < turso/schema.sql
 
 **ถ้า `GET /api/kv/v2` ได้ 500 และ log ว่า `no such table: app_kv`** แปลว่ายังไม่ได้รัน `schema.sql` กับ DB นั้น — ใช้ชื่อ DB จริงของคุณแทน `thai-criminal-law` เช่น `turso db list` แล้วรัน `turso db shell <ชื่อ-db> < turso/schema.sql` อีกครั้ง
 
-เก็บค่า **URL** (`libsql://...`) และ **token** ไว้ใส่ Cloudflare
+เก็บค่า **URL** (`libsql://...`) และ **token** ไว้ใส่ Cloudflare หรือ Vercel
 
 ### 2) Environment บน Cloudflare Pages
 
@@ -243,6 +246,17 @@ turso db shell thai-criminal-law < turso/schema.sql
 ```bash
 npm run deploy
 ```
+
+### 3b) Deploy บน Vercel (ทางเลือก)
+
+1. ติดตั้ง [Vercel CLI](https://vercel.com/docs/cli) หรือเชื่อม GitHub กับ [vercel.com](https://vercel.com)  
+2. **Environment Variables** ในโปรเจกต์ Vercel (Production / Preview ตามที่ใช้):  
+   - `TURSO_DATABASE_URL`  
+   - `TURSO_AUTH_TOKEN` (ตั้งเป็น Sensitive / ซ่อนค่า)  
+3. Build: โปรเจกต์มี `vercel.json` (output `dist`) และโฟลเดอร์ **`api/`** — Vercel จะ map `/api/user-data` และ `/api/kv/:key` ให้อัตโนมัติ  
+4. `VITE_USE_TURSO` ยังฝังจาก `.env.production` / `wrangler.toml` `[vars]` เหมือนเดิม (ไม่ต้องพึ่ง Secret ของ Vercel สำหรับตัวนี้)
+
+ทดสอบท้องถิ่นแบบรวม API: `vercel dev` (พอร์ตมาตรฐาน 3000) — ไม่ใช้ proxy 8788 แบบ Cloudflare
 
 ### 4) ทดสอบบนเครื่อง (optional)
 

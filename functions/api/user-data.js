@@ -1,4 +1,4 @@
-import { createClient } from "@libsql/client";
+import { createTursoClient } from "../../lib/tursoClient.js";
 
 const KEYS = ["v2", "n2", "nn2", "m2"];
 
@@ -7,13 +7,6 @@ function json(body, status = 200) {
     status,
     headers: { "Content-Type": "application/json; charset=utf-8" },
   });
-}
-
-function getClient(env) {
-  const url = env.TURSO_DATABASE_URL;
-  const authToken = env.TURSO_AUTH_TOKEN;
-  if (!url || !authToken) return null;
-  return createClient({ url, authToken });
 }
 
 function parseStoredValue(raw) {
@@ -28,8 +21,16 @@ function parseStoredValue(raw) {
 
 /** GET ครั้งเดียว — คืน { v2, n2, nn2, m2 } ลด race / connection จาก Promise.all 4 ทาง */
 export async function onRequestGet(context) {
-  const client = getClient(context.env);
-  if (!client) return json({ error: "database not configured" }, 503);
+  const { client, missing } = createTursoClient(context.env);
+  if (!client)
+    return json(
+      {
+        error: "database not configured",
+        missing,
+        hint: "Cloudflare Pages → Settings → Variables and Secrets → Production: Secret TURSO_DATABASE_URL + TURSO_AUTH_TOKEN (Preview ด้วยถ้าใช้ branch preview)",
+      },
+      503
+    );
 
   const out = { v2: null, n2: null, nn2: null, m2: null };
 
