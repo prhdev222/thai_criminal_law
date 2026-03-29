@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
-import { Search, BookOpen, Youtube, Map, FileText, Plus, Minus, X, ChevronRight, ChevronDown, Star, Edit3, Trash2, Tag, Clock, Save, PlayCircle, ArrowLeft, Sparkles, MessageSquare, CheckCircle, Circle, ExternalLink, Sun, Moon, Lock, Settings, Maximize2, Minimize2 } from "lucide-react";
+import { Search, BookOpen, Youtube, Map, FileText, Plus, Minus, X, ChevronRight, ChevronDown, Star, Edit3, Trash2, Tag, Clock, Save, PlayCircle, ArrowLeft, Sparkles, MessageSquare, CheckCircle, Circle, ExternalLink, Sun, Moon, Lock, Settings, Maximize2, Minimize2, Clapperboard, Headphones } from "lucide-react";
 import { pdfPageForArticle, criminalLawPdfUrl, CRIMINAL_LAW_PDF } from "./articlePdfPages.js";
 import {
   CRIMINAL_CODE_MAX_ARTICLE,
@@ -422,11 +422,11 @@ const SECTIONS = stubChapter
 
 // ========== SAMPLE VIDEOS & NOTES ========== (same as before)
 const INIT_VIDEOS = [
-  { id:"v1", youtubeId:"spo8ecwd9w8", title:"กฎหมายอาญา ม.59 เจตนา อธิบายละเอียด", channel:"ติวกฎหมาย by อ.สมชาย", tags:[], rating:5, status:"watched", favorite:true },
-  { id:"v2", youtubeId:"jNQXAC9IVRw", title:"สรุป ม.68 ป้องกันโดยชอบ + คำพิพากษาสำคัญ (ตัวอย่าง — แก้ ID ในตั้งค่า)", channel:"กฎหมายง่ายนิดเดียว", tags:[], rating:4, status:"watched", favorite:false },
-  { id:"v3", youtubeId:"LXb3EKWsInQ", title:"ม.288-291 ฆ่าผู้อื่น ทำร้ายจนตาย ประมาทตาย แยกความต่าง (ตัวอย่าง)", channel:"Law Academy TH", tags:[], rating:5, status:"watching", favorite:true },
-  { id:"v4", youtubeId:"M7lc1UVf-VE", title:"ลักทรัพย์ vs ชิงทรัพย์ vs ปล้นทรัพย์ ต่างกันอย่างไร (ตัวอย่าง)", channel:"อ.วิชัย สอนกฎหมาย", tags:[], rating:4, status:"unwatched", favorite:false },
-  { id:"v5", youtubeId:"L_jWHffIx5E", title:"ตัวการ ผู้ใช้ ผู้สนับสนุน ม.83-86 สรุปเข้าใจง่าย (ตัวอย่าง)", channel:"ติวเนติ Channel", tags:[], rating:5, status:"unwatched", favorite:false },
+  { id:"v1", youtubeId:"spo8ecwd9w8", mp3Url:"", title:"กฎหมายอาญา ม.59 เจตนา อธิบายละเอียด", channel:"ติวกฎหมาย by อ.สมชาย", tags:[], rating:5, status:"watched", favorite:true },
+  { id:"v2", youtubeId:"jNQXAC9IVRw", mp3Url:"", title:"สรุป ม.68 ป้องกันโดยชอบ + คำพิพากษาสำคัญ (ตัวอย่าง — แก้ ID ในตั้งค่า)", channel:"กฎหมายง่ายนิดเดียว", tags:[], rating:4, status:"watched", favorite:false },
+  { id:"v3", youtubeId:"LXb3EKWsInQ", mp3Url:"", title:"ม.288-291 ฆ่าผู้อื่น ทำร้ายจนตาย ประมาทตาย แยกความต่าง (ตัวอย่าง)", channel:"Law Academy TH", tags:[], rating:5, status:"watching", favorite:true },
+  { id:"v4", youtubeId:"M7lc1UVf-VE", mp3Url:"", title:"ลักทรัพย์ vs ชิงทรัพย์ vs ปล้นทรัพย์ ต่างกันอย่างไร (ตัวอย่าง)", channel:"อ.วิชัย สอนกฎหมาย", tags:[], rating:4, status:"unwatched", favorite:false },
+  { id:"v5", youtubeId:"L_jWHffIx5E", mp3Url:"", title:"ตัวการ ผู้ใช้ ผู้สนับสนุน ม.83-86 สรุปเข้าใจง่าย (ตัวอย่าง)", channel:"ติวเนติ Channel", tags:[], rating:5, status:"unwatched", favorite:false },
 ];
 
 const INIT_NOTES = [
@@ -522,6 +522,20 @@ const rMd = (t, dark = true) => {
   });
   return body;
 };
+
+/** ลิงก์ MP3/เสียง (https) สำหรับ <audio> — คืน "" ถ้าไม่ใช่ URL ที่เปิดได้ */
+function normalizeMediaAudioUrl(raw) {
+  const s = String(raw ?? "").trim();
+  if (!s) return "";
+  try {
+    const href = s.startsWith("//") ? `https:${s}` : s;
+    const u = new URL(href);
+    if (!/^https?:$/i.test(u.protocol)) return "";
+    return u.href;
+  } catch {
+    return "";
+  }
+}
 
 /** ดึง YouTube video id จาก URL หรือสตริงที่เป็น id อยู่แล้ว (รองรับ youtu.be, watch?v=, embed/, shorts/) */
 function extractYoutubeVideoId(input) {
@@ -933,7 +947,7 @@ export default function App(){
     return()=>{ cancelled=true; };
   },[accessOk]);
   const st={s:cntS(SECTIONS),v:vids.length,w:vids.filter(v=>v.status==="watched").length,n:nts.length};
-  const tabs=[{id:"mindmap",icon:Map,l:"Mind Map"},{id:"youtube",icon:Youtube,l:"YouTube"},{id:"lectures",icon:FileText,l:"Lecture Notes"},{id:"search",icon:Search,l:"ค้นหา"},{id:"settings",icon:Settings,l:"ตั้งค่า"}];
+  const tabs=[{id:"mindmap",icon:Map,l:"Mind Map"},{id:"media",icon:Clapperboard,l:"Media"},{id:"lectures",icon:FileText,l:"Lecture Notes"},{id:"search",icon:Search,l:"ค้นหา"},{id:"settings",icon:Settings,l:"ตั้งค่า"}];
   const stepFont=(d)=>{ const i=FONT_STEPS.indexOf(fontPct); const ni=Math.min(FONT_STEPS.length-1,Math.max(0,i+d)); setFontPct(FONT_STEPS[ni]); };
   if(!accessOk){
     return(
@@ -941,14 +955,14 @@ export default function App(){
 <div className="w-full max-w-sm rounded-2xl border border-zinc-200 dark:border-zinc-800/80 bg-white dark:bg-zinc-900/90 shadow-xl p-6 space-y-4">
 <div className="flex justify-center"><div className="w-14 h-14 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center"><Lock className="w-7 h-7 text-amber-600 dark:text-amber-400" aria-hidden /></div></div>
 <h2 className="text-center text-lg font-bold text-zinc-900 dark:text-zinc-100">รหัสเข้าใช้งาน</h2>
-<p className="text-center text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">กรอกรหัสเพื่อเข้าเว็บและแก้ไข เพิ่ม หรือลบข้อมูล (วิดีโอ สรุป บันทึก)<br/><span className="text-xs text-zinc-500 dark:text-zinc-500">ปิดแท็บแล้วต้องใส่รหัสใหม่</span></p>
+<p className="text-center text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">กรอกรหัสเพื่อเข้าเว็บและแก้ไข เพิ่ม หรือลบข้อมูล (Media สรุป บันทึก)<br/><span className="text-xs text-zinc-500 dark:text-zinc-500">ปิดแท็บแล้วต้องใส่รหัสใหม่</span></p>
 <input type="password" value={gatePw} onChange={(e)=>{ setGatePw(e.target.value); setGateErr(false); }} onKeyDown={(e)=>{ if(e.key==="Enter")tryUnlock(); }} placeholder="รหัสผ่าน" autoComplete="current-password" className="w-full rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/60 px-4 py-3 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 outline-none focus:border-amber-500/60 focus:ring-1 focus:ring-amber-500/30" aria-invalid={gateErr} aria-describedby={gateErr?"gate-err":undefined} />
 {gateErr&&<p id="gate-err" className="text-sm text-red-600 dark:text-red-400 text-center">รหัสไม่ถูกต้อง</p>}
 <button type="button" onClick={tryUnlock} className="w-full py-3 rounded-xl text-sm font-semibold bg-amber-500/90 hover:bg-amber-500 text-zinc-900 border border-amber-600/30 transition-colors">เข้าใช้งาน</button>
 </div>
 </div>);
   }
-  /* Turso: รอโหลดครั้งแรกจาก API ก่อน — ถ้าให้แก้ Lecture/YouTube ก่อน ld=true จะไม่ persist และ setNts/setVids จากเซิร์ฟเวอร์ทับของที่พิมพ์ค้าง */
+  /* Turso: รอโหลดครั้งแรกจาก API ก่อน — ถ้าให้แก้ Lecture/Media ก่อน ld=true จะไม่ persist และ setNts/setVids จากเซิร์ฟเวอร์ทับของที่พิมพ์ค้าง */
   if (USE_TURSO && !ld) {
     return (
       <div
@@ -958,7 +972,7 @@ export default function App(){
         <div className="text-center max-w-sm space-y-2">
           <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">กำลังโหลดข้อมูลจากเซิร์ฟเวอร์ (Turso)…</p>
           <p className="text-xs text-zinc-500 dark:text-zinc-500 leading-relaxed">
-            รอสักครู่ก่อนแก้ไข Lecture Notes / วิดีโอ — ระบบจะซิงก์คีย์ <code className="text-[11px] bg-zinc-200/80 dark:bg-zinc-800/60 px-1 rounded">n2</code> หลังโหลดเสร็จ
+            รอสักครู่ก่อนแก้ไข Lecture Notes / Media — ระบบจะซิงก์คีย์ <code className="text-[11px] bg-zinc-200/80 dark:bg-zinc-800/60 px-1 rounded">n2</code> หลังโหลดเสร็จ
           </p>
         </div>
       </div>
@@ -985,12 +999,12 @@ export default function App(){
 <span>PDF ฉบับเต็ม</span>
 <ExternalLink size={11} className="opacity-70 shrink-0" aria-hidden />
 </a>
-<span className="px-2 py-1 bg-zinc-200/90 dark:bg-zinc-800/50 rounded-lg">{st.s} มาตรา</span><span className="px-2 py-1 bg-zinc-200/90 dark:bg-zinc-800/50 rounded-lg">{st.v} วิดีโอ</span><span className="px-2 py-1 bg-zinc-200/90 dark:bg-zinc-800/50 rounded-lg">{st.n} สรุป</span></div></div></div>
+<span className="px-2 py-1 bg-zinc-200/90 dark:bg-zinc-800/50 rounded-lg">{st.s} มาตรา</span><span className="px-2 py-1 bg-zinc-200/90 dark:bg-zinc-800/50 rounded-lg">{st.v} Media</span><span className="px-2 py-1 bg-zinc-200/90 dark:bg-zinc-800/50 rounded-lg">{st.n} สรุป</span></div></div></div>
 <div className="max-w-7xl mx-auto px-4 flex gap-0 overflow-x-auto">{tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} className={`px-4 py-2.5 flex items-center gap-2 text-sm font-medium border-b-2 transition-all shrink-0 ${tab===t.id?"border-amber-500 text-amber-700 dark:text-amber-400":"border-transparent text-zinc-600 hover:text-zinc-900 dark:text-zinc-500 dark:hover:text-zinc-300"}`}><t.icon size={16}/>{t.l}</button>)}</div>
 </header>
 <main className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
 {tab==="mindmap"&&<MindMapV sections={SECTIONS} nn={nn} setNn={setNn} vids={vids} nts={nts} focusNodeId={mmTargetId} onFocusApplied={clearMmTarget} statuteByNum={statuteByNum} statuteLoadState={statuteLoadState}/>}
-{tab==="youtube"&&<YTV vids={vids} setVids={setVids}/>}
+{tab==="media"&&<YTV vids={vids} setVids={setVids}/>}
 {tab==="lectures"&&<LV nts={nts} setNts={setNts} sections={SECTIONS} isDark={theme==="dark"} persistOk={persistOk}/>}
 {tab==="search"&&<SV sections={SECTIONS} vids={vids} nts={nts} onOpenMindMap={(id)=>{setMmTargetId(id);setTab("mindmap");}} statuteByNum={statuteByNum} statuteLoadState={statuteLoadState}/>}
 {tab==="settings"&&<SettingsV vids={vids} setVids={setVids} appMeta={appMeta} setAppMeta={setAppMeta} dataReady={ld} persistOk={persistOk} onRetryTurso={()=>setTursoLoadTick((n)=>n+1)}/>}
@@ -1181,8 +1195,8 @@ aria-expanded={detailPanelFs}
 <div className="p-5 border-b border-zinc-200 dark:border-zinc-800/40"><h4 className="text-sm font-semibold text-amber-400 mb-3 flex items-center gap-2"><MessageSquare size={14}/>บันทึกส่วนตัว ({(nn[sel.id]||[]).length})</h4>
 <div className="space-y-2 max-h-40 overflow-y-auto mb-3">{(nn[sel.id]||[]).map(n=><div key={n.id} className="bg-zinc-200/90 dark:bg-zinc-800/50 rounded-lg p-3 text-sm text-zinc-400 dark:text-zinc-300 group relative">{n.text}<button onClick={()=>delN(sel.id,n.id)} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-zinc-500 dark:text-zinc-500 hover:text-red-400"><X size={14}/></button></div>)}</div>
 <div className="flex gap-2"><input value={nt} onChange={e=>setNt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addN()} placeholder="พิมพ์บันทึก..." className="flex-1 bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none focus:border-amber-500/50"/><button onClick={addN} className="px-3 py-2 bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30"><Plus size={16}/></button></div></div>
-{rv.length>0&&<div className="p-5 border-b border-zinc-200 dark:border-zinc-800/40"><h4 className="text-sm font-semibold text-red-400 mb-3 flex items-center gap-2"><Youtube size={14}/>วิดีโอที่เกี่ยวข้อง ({rv.length})</h4><div className="space-y-2">{rv.slice(0,3).map((v)=>{const du=normalizeGoogleDocOrDriveUrl(v.googleDocUrl);return(
-<div key={v.id} className="flex flex-col gap-1.5 p-2 rounded-lg bg-zinc-200/70 dark:bg-zinc-800/30 text-sm"><div className="flex items-center gap-2 min-w-0"><PlayCircle size={14} className="text-red-400 flex-shrink-0"/><span className="text-zinc-400 dark:text-zinc-300 truncate">{v.title}</span></div>{du&&<a href={du} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 pl-6 text-[11px] font-medium text-blue-600 hover:underline dark:text-blue-400"><FileText size={12} aria-hidden/>สรุป (Google Doc / Drive)</a>}</div>
+{rv.length>0&&<div className="p-5 border-b border-zinc-200 dark:border-zinc-800/40"><h4 className="text-sm font-semibold text-violet-500 mb-3 flex items-center gap-2"><Clapperboard size={14}/>Media ที่เกี่ยวข้อง ({rv.length})</h4><div className="space-y-2">{rv.slice(0,3).map((v)=>{const du=normalizeGoogleDocOrDriveUrl(v.googleDocUrl);const au=normalizeMediaAudioUrl(v.mp3Url);return(
+<div key={v.id} className="flex flex-col gap-1.5 p-2 rounded-lg bg-zinc-200/70 dark:bg-zinc-800/30 text-sm"><div className="flex items-center gap-2 min-w-0"><PlayCircle size={14} className="text-red-400 flex-shrink-0"/><span className="text-zinc-400 dark:text-zinc-300 truncate">{v.title}</span></div>{au&&<audio controls className="w-full max-h-9 pl-6" src={au} preload="metadata"/>}{du&&<a href={du} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 pl-6 text-[11px] font-medium text-blue-600 hover:underline dark:text-blue-400"><FileText size={12} aria-hidden/>สรุป (Google Doc / Drive)</a>}</div>
 );})}</div></div>}
 {rn.length>0&&<div className="p-5"><h4 className="text-sm font-semibold text-blue-400 mb-3 flex items-center gap-2"><FileText size={14}/>สรุป Lecture ({rn.length})</h4>{rn.map(n=><div key={n.id} className="p-2 rounded-lg bg-zinc-200/70 dark:bg-zinc-800/30 text-sm text-zinc-400 dark:text-zinc-300">{n.title}</div>)}</div>}
 </div>):(
@@ -1233,7 +1247,7 @@ function StorageBackendBanner({ dataReady, persistOk, onRetryTurso }) {
   if (!USE_TURSO) {
     return (
       <div className="mb-8 rounded-2xl border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900/40 p-4 text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
-        <p className="mb-1 font-semibold text-zinc-800 dark:text-zinc-200">ที่เก็บข้อมูล (รายการ YouTube, Lecture, บันทึก Mind Map, หัวเว็บ)</p>
+        <p className="mb-1 font-semibold text-zinc-800 dark:text-zinc-200">ที่เก็บข้อมูล (Media, Lecture, บันทึก Mind Map, หัวเว็บ)</p>
         <p className="mb-2">
           ตอนนี้ใช้ <span className="font-medium text-zinc-900 dark:text-zinc-100">localStorage</span> ในเบราว์เซอร์เครื่องนี้เท่านั้น — โปรเจกต์มีการซิงก์ <span className="font-medium text-zinc-900 dark:text-zinc-100">Turso</span> ไว้แล้ว แต่ปิดเป็นค่าเริ่มต้น จึงไม่เห็นการเชื่อม cloud
         </p>
@@ -1286,7 +1300,7 @@ function StorageBackendBanner({ dataReady, persistOk, onRetryTurso }) {
 function SettingsV({ vids, setVids, appMeta, setAppMeta, dataReady, persistOk, onRetryTurso }) {
   const uv = (id, u) => setVids(vids.map((x) => (x.id === id ? { ...x, ...u } : x)));
   const dv = (id) => {
-    if (!confirm("ลบวิดีโอรายการนี้?")) return;
+    if (!confirm("ลบรายการ Media นี้?")) return;
     setVids(vids.filter((x) => x.id !== id));
   };
   return (
@@ -1295,7 +1309,7 @@ function SettingsV({ vids, setVids, appMeta, setAppMeta, dataReady, persistOk, o
         <Settings size={20} className="text-amber-500" />
         ตั้งค่า
       </h2>
-      <p className="text-sm text-zinc-500 dark:text-zinc-500 mb-4">แก้ข้อความหัวเว็บ และแก้ชื่อวิดีโอ / ช่อง / tag ที่คุณใส่เอง / Video ID — บันทึกอัตโนมัติ</p>
+      <p className="text-sm text-zinc-500 dark:text-zinc-500 mb-4">แก้ข้อความหัวเว็บ และแก้ชื่อรายการ Media / ช่อง / tag / ลิงก์ YouTube / ลิงก์ MP3 — บันทึกอัตโนมัติ</p>
       <StorageBackendBanner dataReady={dataReady} persistOk={persistOk} onRetryTurso={onRetryTurso} />
       <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800/60 bg-zinc-100/90 dark:bg-zinc-900/50 p-5 mb-8">
         <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 mb-3 flex items-center gap-2">
@@ -1323,8 +1337,8 @@ function SettingsV({ vids, setVids, appMeta, setAppMeta, dataReady, persistOk, o
         </button>
       </div>
       <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 mb-3 flex items-center gap-2">
-        <Youtube size={14} className="text-red-500" />
-        วิดีโอ ({vids.length} รายการ)
+        <Clapperboard size={14} className="text-violet-500" />
+        Media ({vids.length} รายการ)
       </h3>
       <div className="space-y-4">
         {vids.map((v) => (
@@ -1346,14 +1360,14 @@ function SettingsV({ vids, setVids, appMeta, setAppMeta, dataReady, persistOk, o
             <input
               value={v.title}
               onChange={(e) => uv(v.id, { title: e.target.value })}
-              placeholder="ชื่อวิดีโอ"
+              placeholder="ชื่อรายการ"
               className="w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800/60 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 outline-none focus:border-amber-500/50"
             />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <input
                 value={v.channel}
                 onChange={(e) => uv(v.id, { channel: e.target.value })}
-                placeholder="ชื่อช่อง"
+                placeholder="ชื่อช่อง / แหล่งที่มา"
                 className="w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800/60 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 outline-none focus:border-amber-500/50"
               />
               <input
@@ -1365,6 +1379,19 @@ function SettingsV({ vids, setVids, appMeta, setAppMeta, dataReady, persistOk, o
                 }}
                 placeholder="ลิงก์ YouTube หรือ Video ID"
                 className="w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800/60 px-3 py-2 text-sm font-mono text-zinc-900 dark:text-zinc-100 outline-none focus:border-amber-500/50"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-zinc-500 dark:text-zinc-500 mb-1">ลิงก์ฟัง MP3 / เสียง (https — ไม่บังคับ)</label>
+              <input
+                value={v.mp3Url ?? ""}
+                onChange={(e) => uv(v.id, { mp3Url: e.target.value })}
+                onBlur={(e) => {
+                  const u = normalizeMediaAudioUrl(e.target.value);
+                  uv(v.id, { mp3Url: u || e.target.value.trim() });
+                }}
+                placeholder="https://.../ไฟล์.mp3"
+                className="w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800/60 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 outline-none focus:border-amber-500/50"
               />
             </div>
             <div>
@@ -1427,7 +1454,7 @@ function SettingsV({ vids, setVids, appMeta, setAppMeta, dataReady, persistOk, o
         ))}
       </div>
       {vids.length === 0 && (
-        <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8">ยังไม่มีวิดีโอ — ไปแท็บ YouTube แล้วกด «เพิ่มวิดีโอ»</p>
+        <p className="text-sm text-zinc-500 dark:text-zinc-500 text-center py-8">ยังไม่มีรายการ Media — ไปแท็บ Media แล้วกด «เพิ่มรายการ»</p>
       )}
     </div>
   );
@@ -1452,7 +1479,8 @@ function YTV({vids,setVids}){
     if(ql){
       const g=normalizeGoogleDocOrDriveUrl(v.googleDocUrl);
       const inDoc=g&&g.toLowerCase().includes(ql);
-      if(!v.title.toLowerCase().includes(ql)&&!v.channel.toLowerCase().includes(ql)&&!v.tags.some(t=>tagMatchesQuery(t,ql))&&!inDoc)return false;
+      const inAudio=String(v.mp3Url??"").toLowerCase().includes(ql);
+      if(!v.title.toLowerCase().includes(ql)&&!v.channel.toLowerCase().includes(ql)&&!v.tags.some(t=>tagMatchesQuery(t,ql))&&!inDoc&&!inAudio)return false;
     }
     if(ft&&!v.tags.includes(ft))return false;
     if(fs&&v.status!==fs)return false;
@@ -1465,12 +1493,12 @@ function YTV({vids,setVids}){
   const dv=id=>setVids(vids.filter(v=>v.id!==id));
   const av=v=>{setVids([v,...vids]);setSa(false);};
   return(<div>
-<div className="flex items-center justify-between mb-5"><h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2"><Youtube size={20} className="text-red-500"/>YouTube Database</h2><button onClick={()=>setSa(true)} className="flex items-center gap-2 px-4 py-2 bg-red-500/20 text-red-400 rounded-xl text-sm font-medium hover:bg-red-500/30 border border-red-500/20"><Plus size={16}/>เพิ่มวิดีโอ</button></div>
+<div className="flex items-center justify-between mb-5"><h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2"><Clapperboard size={20} className="text-violet-500"/>Media</h2><button type="button" onClick={()=>setSa(true)} className="flex items-center gap-2 px-4 py-2 bg-violet-500/20 text-violet-600 dark:text-violet-300 rounded-xl text-sm font-medium hover:bg-violet-500/30 border border-violet-500/25"><Plus size={16}/>เพิ่มรายการ</button></div>
 {sa&&<AVF onAdd={av} onCancel={()=>setSa(false)}/>}
-<div className="flex flex-wrap gap-3 mb-5"><div className="flex-1 min-w-[200px] relative"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 dark:text-zinc-500"/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="ค้นหาวิดีโอ..." className="w-full bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 rounded-xl pl-10 pr-4 py-2.5 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none focus:border-amber-500/50"/></div>
+<div className="flex flex-wrap gap-3 mb-5"><div className="flex-1 min-w-[200px] relative"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 dark:text-zinc-500"/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="ค้นหา Media, ลิงก์ MP3..." className="w-full bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 rounded-xl pl-10 pr-4 py-2.5 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none focus:border-amber-500/50"/></div>
 <select value={ft} onChange={e=>setFt(e.target.value)} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-zinc-400 dark:text-zinc-300 outline-none"><option value="">ทุก Tag</option>{at.map(t=><option key={t} value={t}>{tagDisplayLabel(t)}</option>)}</select>
 <select value={fs} onChange={e=>setFs(e.target.value)} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-zinc-400 dark:text-zinc-300 outline-none"><option value="">ทุกสถานะ</option><option value="unwatched">ยังไม่ดู</option><option value="watching">กำลังดู</option><option value="watched">ดูแล้ว</option></select></div>
-<div className="grid grid-cols-1 md:grid-cols-2 gap-4">{fl.map(v=>{const I=SI[v.status];const yidCard=extractYoutubeVideoId(v.youtubeId);const watchUrl=yidCard?`https://www.youtube.com/watch?v=${encodeURIComponent(yidCard)}`:null;const embedUrl=yidCard?`https://www.youtube.com/embed/${encodeURIComponent(yidCard)}?rel=0`:null;const playing=playId===v.id;const docUrl=normalizeGoogleDocOrDriveUrl(v.googleDocUrl);return(
+<div className="grid grid-cols-1 md:grid-cols-2 gap-4">{fl.map(v=>{const I=SI[v.status];const yidCard=extractYoutubeVideoId(v.youtubeId);const watchUrl=yidCard?`https://www.youtube.com/watch?v=${encodeURIComponent(yidCard)}`:null;const embedUrl=yidCard?`https://www.youtube.com/embed/${encodeURIComponent(yidCard)}?rel=0`:null;const playing=playId===v.id;const docUrl=normalizeGoogleDocOrDriveUrl(v.googleDocUrl);const audioUrl=normalizeMediaAudioUrl(v.mp3Url);return(
 <div key={v.id} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/40 rounded-2xl overflow-hidden hover:border-zinc-300 dark:border-zinc-700/60 transition-all group">
 <div className="relative">
 {watchUrl&&embedUrl&&playing?(
@@ -1484,30 +1512,39 @@ function YTV({vids,setVids}){
 <div className="absolute inset-0 flex items-center justify-center bg-black/25 transition-colors group-hover:bg-black/35"><PlayCircle size={48} className="text-white drop-shadow-md"/></div>
 <span className="absolute bottom-2 left-2 rounded bg-black/55 px-2 py-0.5 text-[10px] font-medium text-white/95">เล่นในเว็บ</span>
 </button>
+):audioUrl?(
+<div className="flex aspect-video flex-col items-center justify-center gap-3 bg-gradient-to-b from-violet-950/55 to-zinc-900 px-4">
+<Headphones className="h-11 w-11 text-violet-300/90 shrink-0" aria-hidden />
+<audio controls className="w-full max-w-md" src={audioUrl} preload="metadata">เบราว์เซอร์ไม่รองรับการเล่นเสียง</audio>
+<span className="text-[10px] text-zinc-400">ฟัง MP3 / เสียง</span>
+</div>
 ):(
-<div className="flex aspect-video items-center justify-center bg-zinc-200 dark:bg-zinc-800"><p className="px-4 text-center text-xs text-zinc-500 dark:text-zinc-500">ใส่ลิงก์หรือ Video ID ที่ถูกต้อง (11 ตัว) ในตั้งค่า — ตัวอย่าง SAMPLE_* เปิดไม่ได้</p></div>
+<div className="flex aspect-video items-center justify-center bg-zinc-200 dark:bg-zinc-800"><p className="px-4 text-center text-xs text-zinc-500 dark:text-zinc-500">ใส่ลิงก์ YouTube หรือลิงก์ MP3 (https) ในแท็บตั้งค่า</p></div>
 )}
 <button type="button" onClick={(e)=>{e.preventDefault();e.stopPropagation();uv(v.id,{favorite:!v.favorite});}} className="absolute top-3 right-3 z-10 rounded-lg bg-black/40 p-1 hover:bg-black/55" aria-label="ติดดาว"><Star size={20} className={v.favorite?"text-amber-400 fill-amber-400":"text-white/90"}/></button>
 </div>
 <div className="p-4"><h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 leading-snug mb-1 line-clamp-2">{v.title}</h3><p className="text-xs text-zinc-500 dark:text-zinc-500 mb-2">{v.channel}</p>
 {watchUrl&&<div className="mb-3 flex flex-wrap gap-x-3 gap-y-1">{playing?null:<button type="button" onClick={()=>setPlayId(v.id)} className="inline-flex items-center gap-1 text-xs font-medium text-red-600 hover:underline dark:text-red-400"><PlayCircle size={12} aria-hidden/>เล่นในเว็บ</button>}<a href={watchUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-zinc-600 hover:underline dark:text-zinc-400"><ExternalLink size={12} aria-hidden/>เปิดใน YouTube</a></div>}
+{audioUrl&&watchUrl&&<div className="mb-3 rounded-xl border border-violet-500/25 bg-violet-500/5 p-2"><p className="text-[10px] font-medium text-violet-700 dark:text-violet-300 mb-1.5">ฟัง MP3 / เสียง</p><audio controls className="w-full" src={audioUrl} preload="metadata">เบราว์เซอร์ไม่รองรับการเล่นเสียง</audio></div>}
+{audioUrl&&!watchUrl&&<div className="mb-3 flex flex-wrap gap-x-3 gap-y-1"><a href={audioUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-violet-600 hover:underline dark:text-violet-400"><ExternalLink size={12} aria-hidden/>เปิดลิงก์เสียงในแท็บใหม่</a></div>}
 {docUrl&&<div className="mb-3"><a href={docUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"><FileText size={12} aria-hidden/>สรุป (Google Doc / Drive)</a></div>}
 <div className="flex flex-wrap gap-1.5 mb-3">{v.tags.map((t,i)=><VideoTagChip key={`${v.id}-tag-${i}`} raw={t}/>)}</div>
-<div className="flex items-center justify-between"><button onClick={()=>{const nx=v.status==="unwatched"?"watching":v.status==="watching"?"watched":"unwatched";uv(v.id,{status:nx});}} className={`flex items-center gap-1.5 text-xs ${SC[v.status]}`}><I size={14}/>{v.status==="unwatched"?"ยังไม่ดู":v.status==="watching"?"กำลังดู":"ดูแล้ว"}</button>
-<div className="flex gap-1.5"><span className="text-xs text-amber-400">{"★".repeat(v.rating)}{"☆".repeat(5-v.rating)}</span><button onClick={()=>dv(v.id)} className="text-zinc-500 dark:text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100"><Trash2 size={14}/></button></div></div></div></div>);})}</div>
-{fl.length===0&&<div className="text-center py-16"><Youtube size={40} className="text-zinc-400 dark:text-zinc-700 mx-auto mb-3"/><p className="text-zinc-500 dark:text-zinc-500 text-sm">ไม่พบวิดีโอ</p></div>}</div>);
+<div className="flex items-center justify-between"><button type="button" onClick={()=>{const nx=v.status==="unwatched"?"watching":v.status==="watching"?"watched":"unwatched";uv(v.id,{status:nx});}} className={`flex items-center gap-1.5 text-xs ${SC[v.status]}`}><I size={14}/>{v.status==="unwatched"?"ยังไม่ดู":v.status==="watching"?"กำลังดู":"ดูแล้ว"}</button>
+<div className="flex gap-1.5"><span className="text-xs text-amber-400">{"★".repeat(v.rating)}{"☆".repeat(5-v.rating)}</span><button type="button" onClick={()=>dv(v.id)} className="text-zinc-500 dark:text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100"><Trash2 size={14}/></button></div></div></div></div>);})}</div>
+{fl.length===0&&<div className="text-center py-16"><Clapperboard size={40} className="text-zinc-400 dark:text-zinc-700 mx-auto mb-3"/><p className="text-zinc-500 dark:text-zinc-500 text-sm">ไม่พบรายการ Media</p></div>}</div>);
 }
 
 function AVF({onAdd,onCancel}){
-  const [f,sF]=useState({youtubeId:"",title:"",channel:"",googleDocUrl:"",tags:"",rating:4});
-  return(<div className="bg-white/95 dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-2xl p-5 mb-5"><h3 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 mb-4">เพิ่มวิดีโอใหม่</h3>
-<div className="grid grid-cols-2 gap-3 mb-3"><input value={f.youtubeId} onChange={e=>sF({...f,youtubeId:e.target.value})} onBlur={e=>{const y=extractYoutubeVideoId(e.target.value);if(y)sF({...f,youtubeId:y});}} placeholder="ลิงก์ youtu.be/... หรือ ID" className="bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none"/><input value={f.channel} onChange={e=>sF({...f,channel:e.target.value})} placeholder="Channel" className="bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none"/></div>
-<input value={f.title} onChange={e=>sF({...f,title:e.target.value})} placeholder="ชื่อวิดีโอ *" className="w-full bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none mb-3"/>
+  const [f,sF]=useState({youtubeId:"",mp3Url:"",title:"",channel:"",googleDocUrl:"",tags:"",rating:4});
+  return(<div className="bg-white/95 dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-2xl p-5 mb-5"><h3 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 mb-4">เพิ่มรายการ Media</h3>
+<div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3"><input value={f.youtubeId} onChange={e=>sF({...f,youtubeId:e.target.value})} onBlur={e=>{const y=extractYoutubeVideoId(e.target.value);if(y)sF({...f,youtubeId:y});}} placeholder="ลิงก์ YouTube / Video ID (ไม่บังคับ)" className="bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none"/><input value={f.channel} onChange={e=>sF({...f,channel:e.target.value})} placeholder="ช่อง / แหล่งที่มา" className="bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none"/></div>
+<input value={f.mp3Url} onChange={e=>sF({...f,mp3Url:e.target.value})} onBlur={e=>{const u=normalizeMediaAudioUrl(e.target.value);if(u)sF({...f,mp3Url:u});}} placeholder="ลิงก์ฟัง MP3 / เสียง https://... (ไม่บังคับ)" className="w-full bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none mb-3"/>
+<input value={f.title} onChange={e=>sF({...f,title:e.target.value})} placeholder="ชื่อรายการ *" className="w-full bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none mb-3"/>
 <input value={f.googleDocUrl} onChange={e=>sF({...f,googleDocUrl:e.target.value})} onBlur={e=>{const n=normalizeGoogleDocOrDriveUrl(e.target.value);if(n)sF({...f,googleDocUrl:n});}} placeholder="ลิงก์สรุป Google Doc / Drive (ไม่บังคับ)" className="w-full bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none mb-3"/>
 <input value={f.tags} onChange={e=>sF({...f,tags:e.target.value})} placeholder="Tag — พิมพ์เอง คั่นแต่ละอันด้วย comma" className="w-full bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none mb-3"/>
-<p className="text-[11px] text-zinc-500 dark:text-zinc-500 mb-3 leading-relaxed">ลิงก์สรุป: วางลิงก์แชร์จาก Google Docs หรือไฟล์ใน Drive (เปิดแท็บใหม่) · Tag: วางลิงก์ YouTube เต็มๆ (เช่น youtu.be/...) จะฝังตัวเล่นในหน้าการ์ด — หรือใช้ ชื่อที่แสดง|URL สำหรับลิงก์ทั่วไป (คั่นหลาย tag ด้วย comma)</p>
-<div className="flex items-center gap-3 mb-4"><span className="text-xs text-zinc-500 dark:text-zinc-500">คะแนน:</span>{[1,2,3,4,5].map(r=><button key={r} onClick={()=>sF({...f,rating:r})} className={`text-lg ${r<=f.rating?"text-amber-400":"text-zinc-500 dark:text-zinc-600"}`}>★</button>)}</div>
-<div className="flex gap-2 justify-end"><button onClick={onCancel} className="px-4 py-2 text-sm text-zinc-500 dark:text-zinc-400">ยกเลิก</button><button onClick={()=>{if(!f.title.trim())return;const raw=String(f.youtubeId).trim();const yid=extractYoutubeVideoId(raw);const gdu=normalizeGoogleDocOrDriveUrl(f.googleDocUrl);onAdd({id:"v"+Date.now(),youtubeId:yid||raw||"dQw4w9WgXcQ",title:f.title,channel:f.channel,googleDocUrl:gdu||"",tags:f.tags.split(",").map(t=>t.trim()).filter(Boolean),rating:f.rating,status:"unwatched",favorite:false});}} className="px-4 py-2 bg-red-500/20 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/30 border border-red-500/20">บันทึก</button></div></div>);
+<p className="text-[11px] text-zinc-500 dark:text-zinc-500 mb-3 leading-relaxed">ต้องมีอย่างน้อย <strong className="text-zinc-600 dark:text-zinc-400">ลิงก์ YouTube</strong> หรือ <strong className="text-zinc-600 dark:text-zinc-400">ลิงก์ MP3</strong> อย่างใดอย่างหนึ่ง · ลิงก์เสียงต้องเป็น https · Tag: ลิงก์ YouTube ในช่อง tag จะฝังตัวเล่นในการ์ด — หรือใช้ ชื่อ|URL สำหรับลิงก์ทั่วไป</p>
+<div className="flex items-center gap-3 mb-4"><span className="text-xs text-zinc-500 dark:text-zinc-500">คะแนน:</span>{[1,2,3,4,5].map(r=><button type="button" key={r} onClick={()=>sF({...f,rating:r})} className={`text-lg ${r<=f.rating?"text-amber-400":"text-zinc-500 dark:text-zinc-600"}`}>★</button>)}</div>
+<div className="flex gap-2 justify-end"><button type="button" onClick={onCancel} className="px-4 py-2 text-sm text-zinc-500 dark:text-zinc-400">ยกเลิก</button><button type="button" onClick={()=>{if(!f.title.trim())return;const raw=String(f.youtubeId).trim();const yid=extractYoutubeVideoId(raw);const audio=normalizeMediaAudioUrl(f.mp3Url);if(!yid&&!audio){window.alert("ใส่ลิงก์ YouTube หรือลิงก์ MP3 (https) อย่างน้อยหนึ่งอย่าง");return;}const gdu=normalizeGoogleDocOrDriveUrl(f.googleDocUrl);onAdd({id:"v"+Date.now(),youtubeId:yid||"",mp3Url:audio||"",title:f.title,channel:f.channel,googleDocUrl:gdu||"",tags:f.tags.split(",").map(t=>t.trim()).filter(Boolean),rating:f.rating,status:"unwatched",favorite:false});}} className="px-4 py-2 bg-violet-500/20 text-violet-700 dark:text-violet-300 rounded-lg text-sm font-medium hover:bg-violet-500/30 border border-violet-500/25">บันทึก</button></div></div>);
 }
 
 function LV({nts,setNts,sections,isDark,persistOk=true}){
@@ -1612,9 +1649,10 @@ function SV({sections,vids,nts,onOpenMindMap,statuteByNum,statuteLoadState}){
     }
   }
   const vr=ql?vids.filter((v)=>{
-    if(v.title.toLowerCase().includes(ql)||v.tags.some(t=>tagMatchesQuery(t,ql)))return true;
+    if(v.title.toLowerCase().includes(ql)||v.channel.toLowerCase().includes(ql)||v.tags.some(t=>tagMatchesQuery(t,ql)))return true;
     const g=normalizeGoogleDocOrDriveUrl(v.googleDocUrl);
-    return g&&g.toLowerCase().includes(ql);
+    if(g&&g.toLowerCase().includes(ql))return true;
+    return String(v.mp3Url??"").toLowerCase().includes(ql);
   }):[];
   const nr=ql?nts.filter(n=>n.title.toLowerCase().includes(ql)||n.content.toLowerCase().includes(ql)):[];
   const tot=sr.length+vr.length+nr.length;
@@ -1707,11 +1745,11 @@ statuteLoadState === "loading" ? (
 {pg!=null&&<a href={criminalLawPdfUrl(pg)} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()} className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 dark:text-sky-300 hover:underline"><ExternalLink size={12} aria-hidden />PDF หน้า {pg}</a>}
 {mmHint("เปิดใน Mind Map")}</div>
 );})}</div></div>}
-{vr.length>0&&<div className="mb-6"><h3 className="text-sm font-semibold text-red-400 mb-3 flex items-center gap-2"><Youtube size={14}/>วิดีโอ ({vr.length})</h3><div className="space-y-2">{vr.map(v=>{const sec=findSectionForVideoTags(v.tags,sections);const vpg=sec?.num!=null?pdfPageForArticle(sec.num):null;const vdoc=normalizeGoogleDocOrDriveUrl(v.googleDocUrl);return(
+{vr.length>0&&<div className="mb-6"><h3 className="text-sm font-semibold text-violet-500 mb-3 flex items-center gap-2"><Clapperboard size={14}/>Media ({vr.length})</h3><div className="space-y-2">{vr.map(v=>{const sec=findSectionForVideoTags(v.tags,sections);const vpg=sec?.num!=null?pdfPageForArticle(sec.num):null;const vdoc=normalizeGoogleDocOrDriveUrl(v.googleDocUrl);const vau=normalizeMediaAudioUrl(v.mp3Url);return(
 <div key={v.id} role="button" tabIndex={0} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();onOpenMindMap(sec?.id??null);}}} onClick={()=>onOpenMindMap(sec?.id??null)} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/40 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3 hover:border-amber-600/50 dark:hover:border-amber-500/35 cursor-pointer transition-all text-left w-full">
-<div className="flex items-center gap-3 flex-1 min-w-0"><PlayCircle size={20} className="text-red-400 flex-shrink-0"/><div className="flex-1 min-w-0"><p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate">{v.title}</p><p className="text-xs text-zinc-500 dark:text-zinc-500">{v.channel} • {v.tags.map(tagDisplayLabel).join(", ")}</p></div></div>
+<div className="flex items-center gap-3 flex-1 min-w-0"><PlayCircle size={20} className="text-red-400 flex-shrink-0"/><div className="flex-1 min-w-0"><p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate">{v.title}</p><p className="text-xs text-zinc-500 dark:text-zinc-500">{v.channel} • {v.tags.map(tagDisplayLabel).join(", ")}</p>{vau&&<audio controls className="mt-2 w-full max-w-md" src={vau} preload="metadata" onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()}/>}</div></div>
 <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:justify-end">{vdoc&&<a href={vdoc} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()} className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:underline dark:text-blue-400"><FileText size={12} aria-hidden />สรุป Doc</a>}{vpg!=null&&<a href={criminalLawPdfUrl(vpg)} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()} className="inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 dark:text-sky-300 hover:underline"><ExternalLink size={12} aria-hidden />PDF ม.{sec.num} หน้า {vpg}</a>}</div>
-{mmHint(sec?"ไปมาตราที่เกี่ยวข้องใน Mind Map":"เปิด Mind Map (ใส่ tag ที่มีเลขมาตราในวิดีโอเพื่อโฟกัส)")}</div>);})}</div></div>}
+{mmHint(sec?"ไปมาตราที่เกี่ยวข้องใน Mind Map":"เปิด Mind Map (ใส่ tag ที่มีเลขมาตราใน Media เพื่อโฟกัส)")}</div>);})}</div></div>}
 {nr.length>0&&<div className="mb-6"><h3 className="text-sm font-semibold text-blue-400 mb-3 flex items-center gap-2"><FileText size={14}/>Lecture Notes ({nr.length})</h3><div className="space-y-2">{nr.map(n=>{const sn=n.sectionId?findNodeById(sections,n.sectionId):null;const npg=sn?.type==="section"&&sn.num!=null?pdfPageForArticle(sn.num):null;return(
 <div key={n.id} role="button" tabIndex={0} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();onOpenMindMap(n.sectionId||null);}}} onClick={()=>onOpenMindMap(n.sectionId||null)} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/40 rounded-xl p-4 hover:border-amber-600/50 dark:hover:border-amber-500/35 cursor-pointer transition-all text-left w-full">
 <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">{n.title}</p><p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">{n.content.replace(/[#*]/g,"").substring(0,100)}...</p>
@@ -1719,6 +1757,6 @@ statuteLoadState === "loading" ? (
 {mmHint(n.sectionId?"เปิดมาตราที่ผูกไว้ใน Mind Map":"เปิด Mind Map (ยังไม่ผูกมาตรา)")}</div>
 );})}</div></div>}
 {(qlNorm || qArticle || isArticleRange)&&tot===0&&<div className="text-center py-16"><Search size={40} className="text-zinc-400 dark:text-zinc-700 mx-auto mb-3"/><p className="text-zinc-500 dark:text-zinc-500 text-sm">ไม่พบผลลัพธ์สำหรับ "{qt || (qArticle ? `ม.${qArticle}` : "")}"</p></div>}
-{!qt&&<div className="text-center py-16"><Sparkles size={40} className="text-zinc-400 dark:text-zinc-700 mx-auto mb-3"/><p className="text-zinc-500 dark:text-zinc-500 text-sm">พิมพ์คำค้นเพื่อค้นหามาตรา วิดีโอ และ lecture notes</p><p className="text-xs text-zinc-500 dark:text-zinc-500 mt-2 max-w-md mx-auto">พิมพ์เลขอารบิก 1–397 เช่น <span className="font-medium text-zinc-600 dark:text-zinc-400">304</span> หรือช่วง <span className="font-medium text-zinc-600 dark:text-zinc-400">302-308</span> / <span className="font-medium text-zinc-600 dark:text-zinc-400">302ถึง308</span> — ระบบจะแสดงคู่เลขไทยในเอกสาร · หรือค้น <span className="font-medium text-zinc-600 dark:text-zinc-400">ม.288</span> / ถ้อยคำทั่วไป</p><div className="flex flex-wrap justify-center gap-2 mt-4">{["288","304","302-308","ฆ่า","เจตนา","ป้องกัน","ลักทรัพย์","หมิ่นประมาท","อายุความ","ทุจริต","ฉ้อโกง","ประมาท"].map(k=><button key={k} onClick={()=>setQ(k)} className="px-3 py-1.5 text-xs bg-zinc-200/90 dark:bg-zinc-800/50 text-zinc-500 dark:text-zinc-400 rounded-lg border border-zinc-300 dark:border-zinc-700/40 hover:border-amber-500/30 hover:text-amber-400">{k}</button>)}</div></div>}
+{!qt&&<div className="text-center py-16"><Sparkles size={40} className="text-zinc-400 dark:text-zinc-700 mx-auto mb-3"/><p className="text-zinc-500 dark:text-zinc-500 text-sm">พิมพ์คำค้นเพื่อค้นหามาตรา Media และ lecture notes</p><p className="text-xs text-zinc-500 dark:text-zinc-500 mt-2 max-w-md mx-auto">พิมพ์เลขอารบิก 1–397 เช่น <span className="font-medium text-zinc-600 dark:text-zinc-400">304</span> หรือช่วง <span className="font-medium text-zinc-600 dark:text-zinc-400">302-308</span> / <span className="font-medium text-zinc-600 dark:text-zinc-400">302ถึง308</span> — ระบบจะแสดงคู่เลขไทยในเอกสาร · หรือค้น <span className="font-medium text-zinc-600 dark:text-zinc-400">ม.288</span> / ถ้อยคำทั่วไป</p><div className="flex flex-wrap justify-center gap-2 mt-4">{["288","304","302-308","ฆ่า","เจตนา","ป้องกัน","ลักทรัพย์","หมิ่นประมาท","อายุความ","ทุจริต","ฉ้อโกง","ประมาท"].map(k=><button key={k} onClick={()=>setQ(k)} className="px-3 py-1.5 text-xs bg-zinc-200/90 dark:bg-zinc-800/50 text-zinc-500 dark:text-zinc-400 rounded-lg border border-zinc-300 dark:border-zinc-700/40 hover:border-amber-500/30 hover:text-amber-400">{k}</button>)}</div></div>}
 </div>);
 }
