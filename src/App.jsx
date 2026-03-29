@@ -530,14 +530,61 @@ const rMd = (t, dark = true) => {
   return body;
 };
 
-/** ลิงก์ MP3/เสียง (https) สำหรับ <audio> — คืน "" ถ้าไม่ใช่ URL ที่เปิดได้ */
+/** ดึง Google Drive file id จากลิงก์หน้า view / open / uc (ใช้แปลงเป็นลิงก์ดาวน์โหลดให้แท็ก audio) */
+function extractGoogleDriveFileIdForAudio(urlStr) {
+  try {
+    const raw = String(urlStr ?? "").trim();
+    if (!raw) return null;
+    const href = raw.startsWith("//")
+      ? `https:${raw}`
+      : /^https?:\/\//i.test(raw)
+        ? raw
+        : /^drive\.google\.com|^docs\.google\.com/i.test(raw)
+          ? `https://${raw.replace(/^\/+/, "")}`
+          : raw;
+    const u = new URL(href);
+    if (!/^https?:$/i.test(u.protocol)) return null;
+    const host = u.hostname.replace(/^www\./i, "").toLowerCase();
+    if (host !== "drive.google.com" && host !== "docs.google.com") return null;
+    if (u.pathname.includes("/drive/folders/")) return null;
+    const m = u.pathname.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (m) return m[1];
+    const id = u.searchParams.get("id");
+    if (id && /^[a-zA-Z0-9_-]+$/.test(id)) return id;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** ลิงก์เปิดหน้าไฟล์ใน Google Drive (ฟัง/ดาวน์โหลดในเว็บของ Google) — คืน null ถ้าไม่ใช่ไฟล์ใน Drive */
+function googleDriveListenPageUrl(urlStr) {
+  const id = extractGoogleDriveFileIdForAudio(urlStr);
+  if (!id) return null;
+  return `https://drive.google.com/file/d/${id}/view`;
+}
+
+/** ลิงก์ MP3/เสียง (https) — ไฟล์ใน Google Drive เก็บเป็นหน้า /file/d/…/view (เล่นในเว็บเราผ่าน &lt;audio&gt; ไม่นิ่ง → ให้กดไปฟังใน Drive) */
 function normalizeMediaAudioUrl(raw) {
   const s = String(raw ?? "").trim();
   if (!s) return "";
   try {
     const href = s.startsWith("//") ? `https:${s}` : s;
-    const u = new URL(href);
+    let u;
+    try {
+      u = new URL(href);
+    } catch {
+      if (/^drive\.google\.com|^docs\.google\.com/i.test(s)) {
+        u = new URL(`https://${s.replace(/^\/+/, "")}`);
+      } else {
+        return "";
+      }
+    }
     if (!/^https?:$/i.test(u.protocol)) return "";
+    const id = extractGoogleDriveFileIdForAudio(u.href);
+    if (id) {
+      return `https://drive.google.com/file/d/${encodeURIComponent(id)}/view`;
+    }
     return u.href;
   } catch {
     return "";
@@ -587,27 +634,105 @@ function mediaAudioTracksToStorage(tracks) {
 
 function MediaAudioPlaylist({ tracks, className, compact = false }) {
   const [ix, setIx] = useState(0);
+  const [audioErr, setAudioErr] = useState(false);
   const n = tracks.length;
   const safeIx = n ? Math.min(Math.max(0, ix), n - 1) : 0;
   const src = tracks[safeIx] ?? "";
   const sig = tracks.join("\u0000");
+  const driveOpen = googleDriveListenPageUrl(src);
+  const allDrive = n > 0 && tracks.every((t) => googleDriveListenPageUrl(t));
 
   useEffect(() => {
     setIx((i) => (n ? Math.min(i, n - 1) : 0));
   }, [n, sig]);
 
+  useEffect(() => {
+    setAudioErr(false);
+  }, [src]);
+
+  const errHint = (
+    <p className="text-[11px] text-amber-800/95 dark:text-amber-300/90 leading-relaxed rounded-lg border border-amber-500/25 bg-amber-500/10 px-2.5 py-2">
+      เล่นในเว็บไม่สำเร็จ — ลองใช้ลิงก์ตรงถึงไฟล์ <code className="text-[10px] bg-zinc-200/80 dark:bg-zinc-800/60 px-1 rounded">.mp3</code> หรือวางลิงก์ Google Drive
+      แทน (จะเปิดหน้าไฟล์ให้กดฟังใน Drive)
+    </p>
+  );
+
+  const driveLinkClass = compact
+    ? "inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-600/35 bg-emerald-500/15 px-3 py-2 text-[11px] font-semibold text-emerald-900 dark:text-emerald-200 hover:bg-emerald-500/25"
+    : "inline-flex w-full max-w-md items-center justify-center gap-2 rounded-xl border border-emerald-600/35 bg-emerald-500/15 px-4 py-3 text-sm font-semibold text-emerald-900 dark:text-emerald-200 hover:bg-emerald-500/25";
+
   if (n === 0) return null;
 
-  if (n === 1) {
+  /* ทุกแทร็กเป็น Google Drive — ไม่ใช้ &lt;audio&gt; ให้กดไปฟังในแท็บของ Google */
+  if (allDrive) {
+    if (n === 1) {
+      const href = googleDriveListenPageUrl(tracks[0]);
+      return (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={[driveLinkClass, className].filter(Boolean).join(" ")}
+        >
+          <ExternalLink size={compact ? 14 : 18} aria-hidden />
+          เปิดฟังใน Google Drive
+        </a>
+      );
+    }
     return (
-      <audio
-        controls
-        className={className || (compact ? "w-full max-h-9" : "w-full max-w-md")}
-        src={src}
-        preload="metadata"
+      <ul
+        className={`${
+          compact ? "max-h-24" : "max-h-40"
+        } w-full space-y-1 overflow-y-auto rounded-lg border border-emerald-600/25 bg-emerald-500/5 p-1.5 dark:bg-emerald-950/20`}
       >
-        เบราว์เซอร์ไม่รองรับการเล่นเสียง
-      </audio>
+        {tracks.map((u, i) => {
+          const href = googleDriveListenPageUrl(u);
+          return (
+            <li key={`${i}-${u.slice(0, 48)}`}>
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex w-full items-center gap-2 rounded-md border border-emerald-600/20 bg-white/80 px-2.5 py-2 text-left text-[11px] font-medium text-emerald-900 hover:bg-emerald-500/10 dark:bg-zinc-900/60 dark:text-emerald-200 dark:hover:bg-emerald-950/40"
+              >
+                <ExternalLink size={12} className="shrink-0 opacity-80" aria-hidden />
+                <span className="tabular-nums">{i + 1}.</span>
+                <span className="min-w-0 truncate">เปิดฟังใน Google Drive</span>
+              </a>
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
+
+  if (n === 1) {
+    if (driveOpen) {
+      return (
+        <a
+          href={driveOpen}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={[driveLinkClass, className].filter(Boolean).join(" ")}
+        >
+          <ExternalLink size={compact ? 14 : 18} aria-hidden />
+          เปิดฟังใน Google Drive
+        </a>
+      );
+    }
+    return (
+      <div className="space-y-2">
+        <audio
+          controls
+          className={className || (compact ? "w-full max-h-9" : "w-full max-w-md")}
+          src={src}
+          preload="metadata"
+          onError={() => setAudioErr(true)}
+        >
+          เบราว์เซอร์ไม่รองรับการเล่นเสียง
+        </audio>
+        {audioErr && errHint}
+      </div>
     );
   }
 
@@ -616,9 +741,31 @@ function MediaAudioPlaylist({ tracks, className, compact = false }) {
 
   return (
     <div className="space-y-2">
-      <audio key={src} controls className={className || "w-full"} src={src} preload="metadata">
-        เบราว์เซอร์ไม่รองรับการเล่นเสียง
-      </audio>
+      {driveOpen ? (
+        <a
+          href={driveOpen}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={[driveLinkClass, className].filter(Boolean).join(" ")}
+        >
+          <ExternalLink size={18} aria-hidden />
+          แทร็ก {safeIx + 1} — เปิดฟังใน Google Drive
+        </a>
+      ) : (
+        <>
+          <audio
+            key={src}
+            controls
+            className={className || "w-full"}
+            src={src}
+            preload="metadata"
+            onError={() => setAudioErr(true)}
+          >
+            เบราว์เซอร์ไม่รองรับการเล่นเสียง
+          </audio>
+          {audioErr && errHint}
+        </>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" className={btn} onClick={() => setIx((i) => (i - 1 + n) % n)}>
           ก่อนหน้า
@@ -636,8 +783,27 @@ function MediaAudioPlaylist({ tracks, className, compact = false }) {
         } overflow-y-auto rounded-lg border border-zinc-200 dark:border-zinc-700/50 bg-zinc-50/80 dark:bg-zinc-900/40 p-1.5 space-y-0.5`}
       >
         {tracks.map((u, i) => {
+          const d = googleDriveListenPageUrl(u);
           const short = u.replace(/^https?:\/\//i, "");
           const label = short.length > 52 ? `${short.slice(0, 52)}…` : short;
+          if (d) {
+            return (
+              <li key={`${i}-${u.slice(0, 64)}`} className="truncate">
+                <a
+                  href={d}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`flex w-full items-center gap-1 truncate rounded px-2 py-1 text-left text-[11px] font-medium text-emerald-800 hover:bg-emerald-500/15 dark:text-emerald-200 dark:hover:bg-emerald-950/40 ${
+                    i === safeIx ? "bg-emerald-500/20 ring-1 ring-emerald-500/30" : ""
+                  }`}
+                  title="เปิดใน Google Drive"
+                >
+                  <ExternalLink size={11} className="shrink-0" aria-hidden />
+                  {i + 1}. เปิดใน Drive
+                </a>
+              </li>
+            );
+          }
           return (
             <li key={`${i}-${u.slice(0, 64)}`} className="truncate">
               <button
@@ -650,7 +816,7 @@ function MediaAudioPlaylist({ tracks, className, compact = false }) {
                 }`}
                 title={u}
               >
-                {i + 1}. {label}
+                {i + 1}. เล่นในเว็บ · {label}
               </button>
             </li>
           );
@@ -1515,7 +1681,7 @@ function SettingsV({ vids, setVids, appMeta, setAppMeta, dataReady, persistOk, o
             </div>
             <div>
               <label className="block text-xs text-zinc-500 dark:text-zinc-500 mb-1">
-                ลิงก์ฟัง MP3 / เสียง — หลายไฟล์ใส่คนละบรรทัด (https · โฟลเดอร์เปิดสแกนในเว็บไม่ได้ ต้องวางลิงก์ทีละไฟล์)
+                ลิงก์เสียง — หลายไฟล์คนละบรรทัด (https) · ลิงก์ Google Drive จะแสดงปุ่มเปิดหน้าไฟล์ใน Drive ให้กดฟังในแท็บใหม่ (ไม่เล่นผ่านตัวเล่นในเว็บ) · URL ตรงถึงไฟล์ .mp3 จะใช้ตัวเล่นในเว็บได้
               </label>
               <textarea
                 key={`mp3-lines-${v.id}-${mediaAudioTrackList(v).length}`}
@@ -1633,7 +1799,7 @@ function YTV({vids,setVids}){
 <div className="flex flex-wrap gap-3 mb-5"><div className="flex-1 min-w-[200px] relative"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 dark:text-zinc-500"/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="ค้นหา Media, ลิงก์ MP3..." className="w-full bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 rounded-xl pl-10 pr-4 py-2.5 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none focus:border-amber-500/50"/></div>
 <select value={ft} onChange={e=>setFt(e.target.value)} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-zinc-400 dark:text-zinc-300 outline-none"><option value="">ทุก Tag</option>{at.map(t=><option key={t} value={t}>{tagDisplayLabel(t)}</option>)}</select>
 <select value={fs} onChange={e=>setFs(e.target.value)} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-zinc-400 dark:text-zinc-300 outline-none"><option value="">ทุกสถานะ</option><option value="unwatched">ยังไม่ดู</option><option value="watching">กำลังดู</option><option value="watched">ดูแล้ว</option></select></div>
-<div className="grid grid-cols-1 md:grid-cols-2 gap-4">{fl.map(v=>{const I=SI[v.status];const yidCard=extractYoutubeVideoId(v.youtubeId);const watchUrl=yidCard?`https://www.youtube.com/watch?v=${encodeURIComponent(yidCard)}`:null;const embedUrl=yidCard?`https://www.youtube.com/embed/${encodeURIComponent(yidCard)}?rel=0`:null;const playing=playId===v.id;const docUrl=normalizeGoogleDocOrDriveUrl(v.googleDocUrl);const audioTracks=mediaAudioTrackList(v);const hasAudio=audioTracks.length>0;return(
+<div className="grid grid-cols-1 md:grid-cols-2 gap-4">{fl.map(v=>{const I=SI[v.status];const yidCard=extractYoutubeVideoId(v.youtubeId);const watchUrl=yidCard?`https://www.youtube.com/watch?v=${encodeURIComponent(yidCard)}`:null;const embedUrl=yidCard?`https://www.youtube.com/embed/${encodeURIComponent(yidCard)}?rel=0`:null;const playing=playId===v.id;const docUrl=normalizeGoogleDocOrDriveUrl(v.googleDocUrl);const audioTracks=mediaAudioTrackList(v);const hasAudio=audioTracks.length>0;const allDriveAudio=hasAudio&&audioTracks.every((t)=>googleDriveListenPageUrl(t));return(
 <div key={v.id} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/40 rounded-2xl overflow-hidden hover:border-zinc-300 dark:border-zinc-700/60 transition-all group">
 <div className="relative">
 {watchUrl&&embedUrl&&playing?(
@@ -1651,7 +1817,7 @@ function YTV({vids,setVids}){
 <div className="flex min-h-[200px] aspect-video flex-col items-center justify-center gap-2 bg-gradient-to-b from-violet-950/55 to-zinc-900 px-3 py-4 overflow-y-auto">
 {audioTracks.length===1?<Headphones className="h-10 w-10 text-violet-300/90 shrink-0" aria-hidden />:null}
 <MediaAudioPlaylist tracks={audioTracks} className="w-full max-w-md" />
-<span className="text-[10px] text-zinc-400">{audioTracks.length===1?"ฟัง MP3 / เสียง":`Playlist ${audioTracks.length} แทร็ก (คนละบรรทัดในการตั้งค่า)`}</span>
+<span className="text-[10px] text-zinc-400">{allDriveAudio?(audioTracks.length===1?"เสียง: กดเปิดฟังใน Google Drive":`เสียง ${audioTracks.length} แทร็ก — เปิดฟังใน Google Drive (แท็บใหม่)`):audioTracks.length===1?"ฟัง MP3 / เสียงในเว็บ":`Playlist ${audioTracks.length} แทร็ก (คนละบรรทัดในการตั้งค่า)`}</span>
 </div>
 ):(
 <div className="flex aspect-video items-center justify-center bg-zinc-200 dark:bg-zinc-800"><p className="px-4 text-center text-xs text-zinc-500 dark:text-zinc-500">ใส่ลิงก์ YouTube หรือลิงก์ MP3 หนึ่งบรรทัดต่อหนึ่งไฟล์ (https) ในแท็บตั้งค่า</p></div>
@@ -1660,8 +1826,8 @@ function YTV({vids,setVids}){
 </div>
 <div className="p-4"><h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 leading-snug mb-1 line-clamp-2">{v.title}</h3><p className="text-xs text-zinc-500 dark:text-zinc-500 mb-2">{v.channel}</p>
 {watchUrl&&<div className="mb-3 flex flex-wrap gap-x-3 gap-y-1">{playing?null:<button type="button" onClick={()=>setPlayId(v.id)} className="inline-flex items-center gap-1 text-xs font-medium text-red-600 hover:underline dark:text-red-400"><PlayCircle size={12} aria-hidden/>เล่นในเว็บ</button>}<a href={watchUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-zinc-600 hover:underline dark:text-zinc-400"><ExternalLink size={12} aria-hidden/>เปิดใน YouTube</a></div>}
-{hasAudio&&watchUrl&&<div className="mb-3 rounded-xl border border-violet-500/25 bg-violet-500/5 p-2"><p className="text-[10px] font-medium text-violet-700 dark:text-violet-300 mb-1.5">ฟัง MP3 / เสียง{audioTracks.length>1?` (${audioTracks.length} แทร็ก)`:""}</p><MediaAudioPlaylist tracks={audioTracks} className="w-full" /></div>}
-{hasAudio&&!watchUrl&&<div className="mb-3 flex flex-col gap-1"><a href={audioTracks[0]} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-violet-600 hover:underline dark:text-violet-400"><ExternalLink size={12} aria-hidden/>เปิดแทร็กแรกในแท็บใหม่</a>{audioTracks.length>1&&<span className="text-[10px] text-zinc-500">อีก {audioTracks.length-1} แทร็ก — สลับในการ์ดด้านบน</span>}</div>}
+{hasAudio&&watchUrl&&<div className="mb-3 rounded-xl border border-violet-500/25 bg-violet-500/5 p-2"><p className="text-[10px] font-medium text-violet-700 dark:text-violet-300 mb-1.5">{allDriveAudio?"เสียง (Google Drive)":`ฟัง MP3 / เสียง${audioTracks.length>1?` (${audioTracks.length} แทร็ก)`:""}`}</p><MediaAudioPlaylist tracks={audioTracks} className="w-full" /></div>}
+{hasAudio&&!watchUrl&&!allDriveAudio&&<div className="mb-3 flex flex-col gap-1"><a href={audioTracks[0]} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-violet-600 hover:underline dark:text-violet-400"><ExternalLink size={12} aria-hidden/>{googleDriveListenPageUrl(audioTracks[0])?"เปิดแทร็กแรกใน Google Drive":"เปิดแทร็กแรกในแท็บใหม่"}</a>{audioTracks.length>1&&<span className="text-[10px] text-zinc-500">อีก {audioTracks.length-1} แทร็ก — สลับในการ์ดด้านบน</span>}</div>}
 {docUrl&&<div className="mb-3"><a href={docUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"><FileText size={12} aria-hidden/>สรุป (Google Doc / Drive)</a></div>}
 <div className="flex flex-wrap gap-1.5 mb-3">{v.tags.map((t,i)=><VideoTagChip key={`${v.id}-tag-${i}`} raw={t}/>)}</div>
 <div className="flex items-center justify-between"><button type="button" onClick={()=>{const nx=v.status==="unwatched"?"watching":v.status==="watching"?"watched":"unwatched";uv(v.id,{status:nx});}} className={`flex items-center gap-1.5 text-xs ${SC[v.status]}`}><I size={14}/>{v.status==="unwatched"?"ยังไม่ดู":v.status==="watching"?"กำลังดู":"ดูแล้ว"}</button>
