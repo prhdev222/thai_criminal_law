@@ -69,12 +69,19 @@ async function remoteSet(k, v) {
   if (!r.ok) throw new Error(`remote set ${r.status}`);
 }
 /** โหลด v2/n2/nn2/m2 ในคำขอเดียว — ลดความล้มจากเรียก /api/kv/* พร้อมกัน 4 ทาง */
+const TURSO_USER_DATA_TIMEOUT_MS = 10_000;
 async function fetchTursoUserBundle() {
-  const r = await fetch("/api/user-data");
-  if (!r.ok) throw new Error(`user-data ${r.status}`);
-  const j = await r.json();
-  if (j && typeof j === "object" && j.error) throw new Error(String(j.error));
-  return j;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), TURSO_USER_DATA_TIMEOUT_MS);
+  try {
+    const r = await fetch("/api/user-data", { signal: ctrl.signal });
+    if (!r.ok) throw new Error(`user-data ${r.status}`);
+    const j = await r.json();
+    if (j && typeof j === "object" && j.error) throw new Error(String(j.error));
+    return j;
+  } finally {
+    clearTimeout(t);
+  }
 }
 const store = {
   /** Turso: คืน null = ฐานว่าง, undefined = เรียก API ไม่สำเร็จ — ไม่อ่าน localStorage */
@@ -537,6 +544,122 @@ function normalizeMediaAudioUrl(raw) {
   }
 }
 
+/** หลายบรรทัด (หนึ่ง URL ต่อบรรทัด) — โฟลเดอร์บนเว็บเปิดสแกนไฟล์ไม่ได้ ต้องวางลิงก์ทีละไฟล์ */
+function parseMultilineMediaAudioUrls(text) {
+  const out = [];
+  const seen = new Set();
+  for (const line of String(text ?? "").split(/\r?\n/)) {
+    const u = normalizeMediaAudioUrl(line.trim());
+    if (u && !seen.has(u)) {
+      seen.add(u);
+      out.push(u);
+    }
+  }
+  return out;
+}
+
+/** รวม mp3Url + mp3Urls[] เป็นลำดับเล่น */
+function mediaAudioTrackList(v) {
+  const out = [];
+  const seen = new Set();
+  const push = (raw) => {
+    const u = normalizeMediaAudioUrl(raw);
+    if (u && !seen.has(u)) {
+      seen.add(u);
+      out.push(u);
+    }
+  };
+  if (v) {
+    push(v.mp3Url);
+    if (Array.isArray(v.mp3Urls)) {
+      for (const x of v.mp3Urls) push(x);
+    }
+  }
+  return out;
+}
+
+function mediaAudioTracksToStorage(tracks) {
+  const t = tracks.filter(Boolean);
+  if (t.length === 0) return { mp3Url: "", mp3Urls: [] };
+  if (t.length === 1) return { mp3Url: t[0], mp3Urls: [] };
+  return { mp3Url: t[0], mp3Urls: t.slice(1) };
+}
+
+function MediaAudioPlaylist({ tracks, className, compact = false }) {
+  const [ix, setIx] = useState(0);
+  const n = tracks.length;
+  const safeIx = n ? Math.min(Math.max(0, ix), n - 1) : 0;
+  const src = tracks[safeIx] ?? "";
+  const sig = tracks.join("\u0000");
+
+  useEffect(() => {
+    setIx((i) => (n ? Math.min(i, n - 1) : 0));
+  }, [n, sig]);
+
+  if (n === 0) return null;
+
+  if (n === 1) {
+    return (
+      <audio
+        controls
+        className={className || (compact ? "w-full max-h-9" : "w-full max-w-md")}
+        src={src}
+        preload="metadata"
+      >
+        เบราว์เซอร์ไม่รองรับการเล่นเสียง
+      </audio>
+    );
+  }
+
+  const btn =
+    "rounded-lg border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-[11px] font-medium text-violet-800 dark:text-violet-200 hover:bg-violet-500/20";
+
+  return (
+    <div className="space-y-2">
+      <audio key={src} controls className={className || "w-full"} src={src} preload="metadata">
+        เบราว์เซอร์ไม่รองรับการเล่นเสียง
+      </audio>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" className={btn} onClick={() => setIx((i) => (i - 1 + n) % n)}>
+          ก่อนหน้า
+        </button>
+        <span className="text-xs text-zinc-500 dark:text-zinc-400 tabular-nums">
+          {safeIx + 1} / {n}
+        </span>
+        <button type="button" className={btn} onClick={() => setIx((i) => (i + 1) % n)}>
+          ถัดไป
+        </button>
+      </div>
+      <ul
+        className={`${
+          compact ? "max-h-20" : "max-h-28"
+        } overflow-y-auto rounded-lg border border-zinc-200 dark:border-zinc-700/50 bg-zinc-50/80 dark:bg-zinc-900/40 p-1.5 space-y-0.5`}
+      >
+        {tracks.map((u, i) => {
+          const short = u.replace(/^https?:\/\//i, "");
+          const label = short.length > 52 ? `${short.slice(0, 52)}…` : short;
+          return (
+            <li key={`${i}-${u.slice(0, 64)}`} className="truncate">
+              <button
+                type="button"
+                onClick={() => setIx(i)}
+                className={`w-full truncate rounded px-2 py-1 text-left text-[11px] ${
+                  i === safeIx
+                    ? "bg-violet-500/20 font-semibold text-violet-800 dark:text-violet-200"
+                    : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/80 dark:hover:bg-zinc-800/60"
+                }`}
+                title={u}
+              >
+                {i + 1}. {label}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 /** ดึง YouTube video id จาก URL หรือสตริงที่เป็น id อยู่แล้ว (รองรับ youtu.be, watch?v=, embed/, shorts/) */
 function extractYoutubeVideoId(input) {
   if (input == null) return null;
@@ -969,10 +1092,19 @@ export default function App(){
         className="min-h-screen bg-zinc-100 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-200 flex items-center justify-center p-4 transition-colors"
         style={{ fontFamily: "'Sarabun','Noto Sans Thai',sans-serif" }}
       >
-        <div className="text-center max-w-sm space-y-2">
+        <div className="text-center max-w-md space-y-3">
           <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">กำลังโหลดข้อมูลจากเซิร์ฟเวอร์ (Turso)…</p>
           <p className="text-xs text-zinc-500 dark:text-zinc-500 leading-relaxed">
             รอสักครู่ก่อนแก้ไข Lecture Notes / Media — ระบบจะซิงก์คีย์ <code className="text-[11px] bg-zinc-200/80 dark:bg-zinc-800/60 px-1 rounded">n2</code> หลังโหลดเสร็จ
+          </p>
+          <p className="text-xs text-amber-800/90 dark:text-amber-300/90 leading-relaxed rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-left">
+            <strong className="font-semibold">ค้างนานหรือไม่ขึ้น?</strong> โหมด Turso ต้องมี API ที่พอร์ต{" "}
+            <code className="text-[11px] bg-zinc-200/80 dark:bg-zinc-800/60 px-1 rounded">8788</code> — เปิดเทอร์มินัลที่สองในโฟลเดอร์โปรเจกต์ แล้วรัน{" "}
+            <code className="text-[11px] bg-zinc-200/80 dark:bg-zinc-800/60 px-1 rounded">npm run pages:dev</code> คู่กับ{" "}
+            <code className="text-[11px] bg-zinc-200/80 dark:bg-zinc-800/60 px-1 rounded">npm run dev</code>
+            <br />
+            หรือปิด Turso ชั่วคราว: ในไฟล์ <code className="text-[11px] bg-zinc-200/80 dark:bg-zinc-800/60 px-1 rounded">.env</code> ลบหรือตั้ง{" "}
+            <code className="text-[11px] bg-zinc-200/80 dark:bg-zinc-800/60 px-1 rounded">VITE_USE_TURSO=0</code> แล้วรีสตาร์ท Vite
           </p>
         </div>
       </div>
@@ -1195,8 +1327,8 @@ aria-expanded={detailPanelFs}
 <div className="p-5 border-b border-zinc-200 dark:border-zinc-800/40"><h4 className="text-sm font-semibold text-amber-400 mb-3 flex items-center gap-2"><MessageSquare size={14}/>บันทึกส่วนตัว ({(nn[sel.id]||[]).length})</h4>
 <div className="space-y-2 max-h-40 overflow-y-auto mb-3">{(nn[sel.id]||[]).map(n=><div key={n.id} className="bg-zinc-200/90 dark:bg-zinc-800/50 rounded-lg p-3 text-sm text-zinc-400 dark:text-zinc-300 group relative">{n.text}<button onClick={()=>delN(sel.id,n.id)} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-zinc-500 dark:text-zinc-500 hover:text-red-400"><X size={14}/></button></div>)}</div>
 <div className="flex gap-2"><input value={nt} onChange={e=>setNt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addN()} placeholder="พิมพ์บันทึก..." className="flex-1 bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none focus:border-amber-500/50"/><button onClick={addN} className="px-3 py-2 bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30"><Plus size={16}/></button></div></div>
-{rv.length>0&&<div className="p-5 border-b border-zinc-200 dark:border-zinc-800/40"><h4 className="text-sm font-semibold text-violet-500 mb-3 flex items-center gap-2"><Clapperboard size={14}/>Media ที่เกี่ยวข้อง ({rv.length})</h4><div className="space-y-2">{rv.slice(0,3).map((v)=>{const du=normalizeGoogleDocOrDriveUrl(v.googleDocUrl);const au=normalizeMediaAudioUrl(v.mp3Url);return(
-<div key={v.id} className="flex flex-col gap-1.5 p-2 rounded-lg bg-zinc-200/70 dark:bg-zinc-800/30 text-sm"><div className="flex items-center gap-2 min-w-0"><PlayCircle size={14} className="text-red-400 flex-shrink-0"/><span className="text-zinc-400 dark:text-zinc-300 truncate">{v.title}</span></div>{au&&<audio controls className="w-full max-h-9 pl-6" src={au} preload="metadata"/>}{du&&<a href={du} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 pl-6 text-[11px] font-medium text-blue-600 hover:underline dark:text-blue-400"><FileText size={12} aria-hidden/>สรุป (Google Doc / Drive)</a>}</div>
+{rv.length>0&&<div className="p-5 border-b border-zinc-200 dark:border-zinc-800/40"><h4 className="text-sm font-semibold text-violet-500 mb-3 flex items-center gap-2"><Clapperboard size={14}/>Media ที่เกี่ยวข้อง ({rv.length})</h4><div className="space-y-2">{rv.slice(0,3).map((v)=>{const du=normalizeGoogleDocOrDriveUrl(v.googleDocUrl);const audioTracks=mediaAudioTrackList(v);return(
+<div key={v.id} className="flex flex-col gap-1.5 p-2 rounded-lg bg-zinc-200/70 dark:bg-zinc-800/30 text-sm"><div className="flex items-center gap-2 min-w-0"><PlayCircle size={14} className="text-red-400 flex-shrink-0"/><span className="text-zinc-400 dark:text-zinc-300 truncate">{v.title}</span></div>{audioTracks.length>0&&<div className="pl-6"><MediaAudioPlaylist tracks={audioTracks} compact className="w-full max-h-9"/></div>}{du&&<a href={du} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 pl-6 text-[11px] font-medium text-blue-600 hover:underline dark:text-blue-400"><FileText size={12} aria-hidden/>สรุป (Google Doc / Drive)</a>}</div>
 );})}</div></div>}
 {rn.length>0&&<div className="p-5"><h4 className="text-sm font-semibold text-blue-400 mb-3 flex items-center gap-2"><FileText size={14}/>สรุป Lecture ({rn.length})</h4>{rn.map(n=><div key={n.id} className="p-2 rounded-lg bg-zinc-200/70 dark:bg-zinc-800/30 text-sm text-zinc-400 dark:text-zinc-300">{n.title}</div>)}</div>}
 </div>):(
@@ -1382,16 +1514,19 @@ function SettingsV({ vids, setVids, appMeta, setAppMeta, dataReady, persistOk, o
               />
             </div>
             <div>
-              <label className="block text-xs text-zinc-500 dark:text-zinc-500 mb-1">ลิงก์ฟัง MP3 / เสียง (https — ไม่บังคับ)</label>
-              <input
-                value={v.mp3Url ?? ""}
-                onChange={(e) => uv(v.id, { mp3Url: e.target.value })}
+              <label className="block text-xs text-zinc-500 dark:text-zinc-500 mb-1">
+                ลิงก์ฟัง MP3 / เสียง — หลายไฟล์ใส่คนละบรรทัด (https · โฟลเดอร์เปิดสแกนในเว็บไม่ได้ ต้องวางลิงก์ทีละไฟล์)
+              </label>
+              <textarea
+                key={`mp3-lines-${v.id}-${mediaAudioTrackList(v).length}`}
+                defaultValue={mediaAudioTrackList(v).join("\n")}
                 onBlur={(e) => {
-                  const u = normalizeMediaAudioUrl(e.target.value);
-                  uv(v.id, { mp3Url: u || e.target.value.trim() });
+                  const { mp3Url, mp3Urls } = mediaAudioTracksToStorage(parseMultilineMediaAudioUrls(e.target.value));
+                  uv(v.id, { mp3Url, mp3Urls });
                 }}
-                placeholder="https://.../ไฟล์.mp3"
-                className="w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800/60 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 outline-none focus:border-amber-500/50"
+                rows={4}
+                placeholder={"https://เซิร์ฟเวอร์/บทที่1.mp3\nhttps://เซิร์ฟเวอร์/บทที่2.mp3"}
+                className="w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800/60 px-3 py-2 text-sm font-mono text-zinc-900 dark:text-zinc-100 outline-none focus:border-amber-500/50 resize-y min-h-[88px]"
               />
             </div>
             <div>
@@ -1479,7 +1614,7 @@ function YTV({vids,setVids}){
     if(ql){
       const g=normalizeGoogleDocOrDriveUrl(v.googleDocUrl);
       const inDoc=g&&g.toLowerCase().includes(ql);
-      const inAudio=String(v.mp3Url??"").toLowerCase().includes(ql);
+      const inAudio=mediaAudioTrackList(v).some((u)=>u.toLowerCase().includes(ql));
       if(!v.title.toLowerCase().includes(ql)&&!v.channel.toLowerCase().includes(ql)&&!v.tags.some(t=>tagMatchesQuery(t,ql))&&!inDoc&&!inAudio)return false;
     }
     if(ft&&!v.tags.includes(ft))return false;
@@ -1498,7 +1633,7 @@ function YTV({vids,setVids}){
 <div className="flex flex-wrap gap-3 mb-5"><div className="flex-1 min-w-[200px] relative"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 dark:text-zinc-500"/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="ค้นหา Media, ลิงก์ MP3..." className="w-full bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 rounded-xl pl-10 pr-4 py-2.5 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none focus:border-amber-500/50"/></div>
 <select value={ft} onChange={e=>setFt(e.target.value)} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-zinc-400 dark:text-zinc-300 outline-none"><option value="">ทุก Tag</option>{at.map(t=><option key={t} value={t}>{tagDisplayLabel(t)}</option>)}</select>
 <select value={fs} onChange={e=>setFs(e.target.value)} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/60 rounded-xl px-4 py-2.5 text-sm text-zinc-400 dark:text-zinc-300 outline-none"><option value="">ทุกสถานะ</option><option value="unwatched">ยังไม่ดู</option><option value="watching">กำลังดู</option><option value="watched">ดูแล้ว</option></select></div>
-<div className="grid grid-cols-1 md:grid-cols-2 gap-4">{fl.map(v=>{const I=SI[v.status];const yidCard=extractYoutubeVideoId(v.youtubeId);const watchUrl=yidCard?`https://www.youtube.com/watch?v=${encodeURIComponent(yidCard)}`:null;const embedUrl=yidCard?`https://www.youtube.com/embed/${encodeURIComponent(yidCard)}?rel=0`:null;const playing=playId===v.id;const docUrl=normalizeGoogleDocOrDriveUrl(v.googleDocUrl);const audioUrl=normalizeMediaAudioUrl(v.mp3Url);return(
+<div className="grid grid-cols-1 md:grid-cols-2 gap-4">{fl.map(v=>{const I=SI[v.status];const yidCard=extractYoutubeVideoId(v.youtubeId);const watchUrl=yidCard?`https://www.youtube.com/watch?v=${encodeURIComponent(yidCard)}`:null;const embedUrl=yidCard?`https://www.youtube.com/embed/${encodeURIComponent(yidCard)}?rel=0`:null;const playing=playId===v.id;const docUrl=normalizeGoogleDocOrDriveUrl(v.googleDocUrl);const audioTracks=mediaAudioTrackList(v);const hasAudio=audioTracks.length>0;return(
 <div key={v.id} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/40 rounded-2xl overflow-hidden hover:border-zinc-300 dark:border-zinc-700/60 transition-all group">
 <div className="relative">
 {watchUrl&&embedUrl&&playing?(
@@ -1512,21 +1647,21 @@ function YTV({vids,setVids}){
 <div className="absolute inset-0 flex items-center justify-center bg-black/25 transition-colors group-hover:bg-black/35"><PlayCircle size={48} className="text-white drop-shadow-md"/></div>
 <span className="absolute bottom-2 left-2 rounded bg-black/55 px-2 py-0.5 text-[10px] font-medium text-white/95">เล่นในเว็บ</span>
 </button>
-):audioUrl?(
-<div className="flex aspect-video flex-col items-center justify-center gap-3 bg-gradient-to-b from-violet-950/55 to-zinc-900 px-4">
-<Headphones className="h-11 w-11 text-violet-300/90 shrink-0" aria-hidden />
-<audio controls className="w-full max-w-md" src={audioUrl} preload="metadata">เบราว์เซอร์ไม่รองรับการเล่นเสียง</audio>
-<span className="text-[10px] text-zinc-400">ฟัง MP3 / เสียง</span>
+):hasAudio?(
+<div className="flex min-h-[200px] aspect-video flex-col items-center justify-center gap-2 bg-gradient-to-b from-violet-950/55 to-zinc-900 px-3 py-4 overflow-y-auto">
+{audioTracks.length===1?<Headphones className="h-10 w-10 text-violet-300/90 shrink-0" aria-hidden />:null}
+<MediaAudioPlaylist tracks={audioTracks} className="w-full max-w-md" />
+<span className="text-[10px] text-zinc-400">{audioTracks.length===1?"ฟัง MP3 / เสียง":`Playlist ${audioTracks.length} แทร็ก (คนละบรรทัดในการตั้งค่า)`}</span>
 </div>
 ):(
-<div className="flex aspect-video items-center justify-center bg-zinc-200 dark:bg-zinc-800"><p className="px-4 text-center text-xs text-zinc-500 dark:text-zinc-500">ใส่ลิงก์ YouTube หรือลิงก์ MP3 (https) ในแท็บตั้งค่า</p></div>
+<div className="flex aspect-video items-center justify-center bg-zinc-200 dark:bg-zinc-800"><p className="px-4 text-center text-xs text-zinc-500 dark:text-zinc-500">ใส่ลิงก์ YouTube หรือลิงก์ MP3 หนึ่งบรรทัดต่อหนึ่งไฟล์ (https) ในแท็บตั้งค่า</p></div>
 )}
 <button type="button" onClick={(e)=>{e.preventDefault();e.stopPropagation();uv(v.id,{favorite:!v.favorite});}} className="absolute top-3 right-3 z-10 rounded-lg bg-black/40 p-1 hover:bg-black/55" aria-label="ติดดาว"><Star size={20} className={v.favorite?"text-amber-400 fill-amber-400":"text-white/90"}/></button>
 </div>
 <div className="p-4"><h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 leading-snug mb-1 line-clamp-2">{v.title}</h3><p className="text-xs text-zinc-500 dark:text-zinc-500 mb-2">{v.channel}</p>
 {watchUrl&&<div className="mb-3 flex flex-wrap gap-x-3 gap-y-1">{playing?null:<button type="button" onClick={()=>setPlayId(v.id)} className="inline-flex items-center gap-1 text-xs font-medium text-red-600 hover:underline dark:text-red-400"><PlayCircle size={12} aria-hidden/>เล่นในเว็บ</button>}<a href={watchUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-zinc-600 hover:underline dark:text-zinc-400"><ExternalLink size={12} aria-hidden/>เปิดใน YouTube</a></div>}
-{audioUrl&&watchUrl&&<div className="mb-3 rounded-xl border border-violet-500/25 bg-violet-500/5 p-2"><p className="text-[10px] font-medium text-violet-700 dark:text-violet-300 mb-1.5">ฟัง MP3 / เสียง</p><audio controls className="w-full" src={audioUrl} preload="metadata">เบราว์เซอร์ไม่รองรับการเล่นเสียง</audio></div>}
-{audioUrl&&!watchUrl&&<div className="mb-3 flex flex-wrap gap-x-3 gap-y-1"><a href={audioUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-violet-600 hover:underline dark:text-violet-400"><ExternalLink size={12} aria-hidden/>เปิดลิงก์เสียงในแท็บใหม่</a></div>}
+{hasAudio&&watchUrl&&<div className="mb-3 rounded-xl border border-violet-500/25 bg-violet-500/5 p-2"><p className="text-[10px] font-medium text-violet-700 dark:text-violet-300 mb-1.5">ฟัง MP3 / เสียง{audioTracks.length>1?` (${audioTracks.length} แทร็ก)`:""}</p><MediaAudioPlaylist tracks={audioTracks} className="w-full" /></div>}
+{hasAudio&&!watchUrl&&<div className="mb-3 flex flex-col gap-1"><a href={audioTracks[0]} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-violet-600 hover:underline dark:text-violet-400"><ExternalLink size={12} aria-hidden/>เปิดแทร็กแรกในแท็บใหม่</a>{audioTracks.length>1&&<span className="text-[10px] text-zinc-500">อีก {audioTracks.length-1} แทร็ก — สลับในการ์ดด้านบน</span>}</div>}
 {docUrl&&<div className="mb-3"><a href={docUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"><FileText size={12} aria-hidden/>สรุป (Google Doc / Drive)</a></div>}
 <div className="flex flex-wrap gap-1.5 mb-3">{v.tags.map((t,i)=><VideoTagChip key={`${v.id}-tag-${i}`} raw={t}/>)}</div>
 <div className="flex items-center justify-between"><button type="button" onClick={()=>{const nx=v.status==="unwatched"?"watching":v.status==="watching"?"watched":"unwatched";uv(v.id,{status:nx});}} className={`flex items-center gap-1.5 text-xs ${SC[v.status]}`}><I size={14}/>{v.status==="unwatched"?"ยังไม่ดู":v.status==="watching"?"กำลังดู":"ดูแล้ว"}</button>
@@ -1535,16 +1670,17 @@ function YTV({vids,setVids}){
 }
 
 function AVF({onAdd,onCancel}){
-  const [f,sF]=useState({youtubeId:"",mp3Url:"",title:"",channel:"",googleDocUrl:"",tags:"",rating:4});
+  const [f,sF]=useState({youtubeId:"",mp3Lines:"",title:"",channel:"",googleDocUrl:"",tags:"",rating:4});
   return(<div className="bg-white/95 dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800/60 rounded-2xl p-5 mb-5"><h3 className="text-sm font-bold text-zinc-800 dark:text-zinc-200 mb-4">เพิ่มรายการ Media</h3>
 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3"><input value={f.youtubeId} onChange={e=>sF({...f,youtubeId:e.target.value})} onBlur={e=>{const y=extractYoutubeVideoId(e.target.value);if(y)sF({...f,youtubeId:y});}} placeholder="ลิงก์ YouTube / Video ID (ไม่บังคับ)" className="bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none"/><input value={f.channel} onChange={e=>sF({...f,channel:e.target.value})} placeholder="ช่อง / แหล่งที่มา" className="bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none"/></div>
-<input value={f.mp3Url} onChange={e=>sF({...f,mp3Url:e.target.value})} onBlur={e=>{const u=normalizeMediaAudioUrl(e.target.value);if(u)sF({...f,mp3Url:u});}} placeholder="ลิงก์ฟัง MP3 / เสียง https://... (ไม่บังคับ)" className="w-full bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none mb-3"/>
+<label className="block text-[11px] text-zinc-500 dark:text-zinc-500 mb-1">ลิงก์ MP3 / เสียง — หลายไฟล์ใส่คนละบรรทัด (https)</label>
+<textarea value={f.mp3Lines} onChange={e=>sF({...f,mp3Lines:e.target.value})} rows={4} placeholder={"https://.../1.mp3\nhttps://.../2.mp3"} className="w-full bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm font-mono text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none resize-y min-h-[88px] mb-3"/>
 <input value={f.title} onChange={e=>sF({...f,title:e.target.value})} placeholder="ชื่อรายการ *" className="w-full bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none mb-3"/>
 <input value={f.googleDocUrl} onChange={e=>sF({...f,googleDocUrl:e.target.value})} onBlur={e=>{const n=normalizeGoogleDocOrDriveUrl(e.target.value);if(n)sF({...f,googleDocUrl:n});}} placeholder="ลิงก์สรุป Google Doc / Drive (ไม่บังคับ)" className="w-full bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none mb-3"/>
 <input value={f.tags} onChange={e=>sF({...f,tags:e.target.value})} placeholder="Tag — พิมพ์เอง คั่นแต่ละอันด้วย comma" className="w-full bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-300 dark:border-zinc-700/50 rounded-lg px-3 py-2 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 outline-none mb-3"/>
-<p className="text-[11px] text-zinc-500 dark:text-zinc-500 mb-3 leading-relaxed">ต้องมีอย่างน้อย <strong className="text-zinc-600 dark:text-zinc-400">ลิงก์ YouTube</strong> หรือ <strong className="text-zinc-600 dark:text-zinc-400">ลิงก์ MP3</strong> อย่างใดอย่างหนึ่ง · ลิงก์เสียงต้องเป็น https · Tag: ลิงก์ YouTube ในช่อง tag จะฝังตัวเล่นในการ์ด — หรือใช้ ชื่อ|URL สำหรับลิงก์ทั่วไป</p>
+<p className="text-[11px] text-zinc-500 dark:text-zinc-500 mb-3 leading-relaxed">ต้องมีอย่างน้อย <strong className="text-zinc-600 dark:text-zinc-400">YouTube</strong> หรือ <strong className="text-zinc-600 dark:text-zinc-400">ลิงก์เสียงอย่างน้อยหนึ่งบรรทัด</strong> · เว็บเปิดโฟลเดอร์แล้วสแกน MP3 อัตโนมัติไม่ได้ — ต้องวาง URL ทีละไฟล์ · Tag: ลิงก์ YouTube ในช่อง tag จะฝังตัวเล่นในการ์ด</p>
 <div className="flex items-center gap-3 mb-4"><span className="text-xs text-zinc-500 dark:text-zinc-500">คะแนน:</span>{[1,2,3,4,5].map(r=><button type="button" key={r} onClick={()=>sF({...f,rating:r})} className={`text-lg ${r<=f.rating?"text-amber-400":"text-zinc-500 dark:text-zinc-600"}`}>★</button>)}</div>
-<div className="flex gap-2 justify-end"><button type="button" onClick={onCancel} className="px-4 py-2 text-sm text-zinc-500 dark:text-zinc-400">ยกเลิก</button><button type="button" onClick={()=>{if(!f.title.trim())return;const raw=String(f.youtubeId).trim();const yid=extractYoutubeVideoId(raw);const audio=normalizeMediaAudioUrl(f.mp3Url);if(!yid&&!audio){window.alert("ใส่ลิงก์ YouTube หรือลิงก์ MP3 (https) อย่างน้อยหนึ่งอย่าง");return;}const gdu=normalizeGoogleDocOrDriveUrl(f.googleDocUrl);onAdd({id:"v"+Date.now(),youtubeId:yid||"",mp3Url:audio||"",title:f.title,channel:f.channel,googleDocUrl:gdu||"",tags:f.tags.split(",").map(t=>t.trim()).filter(Boolean),rating:f.rating,status:"unwatched",favorite:false});}} className="px-4 py-2 bg-violet-500/20 text-violet-700 dark:text-violet-300 rounded-lg text-sm font-medium hover:bg-violet-500/30 border border-violet-500/25">บันทึก</button></div></div>);
+<div className="flex gap-2 justify-end"><button type="button" onClick={onCancel} className="px-4 py-2 text-sm text-zinc-500 dark:text-zinc-400">ยกเลิก</button><button type="button" onClick={()=>{if(!f.title.trim())return;const raw=String(f.youtubeId).trim();const yid=extractYoutubeVideoId(raw);const audioTracks=parseMultilineMediaAudioUrls(f.mp3Lines);if(!yid&&audioTracks.length===0){window.alert("ใส่ลิงก์ YouTube หรือลิงก์เสียง https อย่างน้อยหนึ่งบรรทัด");return;}const { mp3Url, mp3Urls }=mediaAudioTracksToStorage(audioTracks);const gdu=normalizeGoogleDocOrDriveUrl(f.googleDocUrl);onAdd({id:"v"+Date.now(),youtubeId:yid||"",mp3Url,mp3Urls,title:f.title,channel:f.channel,googleDocUrl:gdu||"",tags:f.tags.split(",").map(t=>t.trim()).filter(Boolean),rating:f.rating,status:"unwatched",favorite:false});}} className="px-4 py-2 bg-violet-500/20 text-violet-700 dark:text-violet-300 rounded-lg text-sm font-medium hover:bg-violet-500/30 border border-violet-500/25">บันทึก</button></div></div>);
 }
 
 function LV({nts,setNts,sections,isDark,persistOk=true}){
@@ -1652,7 +1788,7 @@ function SV({sections,vids,nts,onOpenMindMap,statuteByNum,statuteLoadState}){
     if(v.title.toLowerCase().includes(ql)||v.channel.toLowerCase().includes(ql)||v.tags.some(t=>tagMatchesQuery(t,ql)))return true;
     const g=normalizeGoogleDocOrDriveUrl(v.googleDocUrl);
     if(g&&g.toLowerCase().includes(ql))return true;
-    return String(v.mp3Url??"").toLowerCase().includes(ql);
+    return mediaAudioTrackList(v).some((u)=>u.toLowerCase().includes(ql));
   }):[];
   const nr=ql?nts.filter(n=>n.title.toLowerCase().includes(ql)||n.content.toLowerCase().includes(ql)):[];
   const tot=sr.length+vr.length+nr.length;
@@ -1745,9 +1881,9 @@ statuteLoadState === "loading" ? (
 {pg!=null&&<a href={criminalLawPdfUrl(pg)} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()} className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 dark:text-sky-300 hover:underline"><ExternalLink size={12} aria-hidden />PDF หน้า {pg}</a>}
 {mmHint("เปิดใน Mind Map")}</div>
 );})}</div></div>}
-{vr.length>0&&<div className="mb-6"><h3 className="text-sm font-semibold text-violet-500 mb-3 flex items-center gap-2"><Clapperboard size={14}/>Media ({vr.length})</h3><div className="space-y-2">{vr.map(v=>{const sec=findSectionForVideoTags(v.tags,sections);const vpg=sec?.num!=null?pdfPageForArticle(sec.num):null;const vdoc=normalizeGoogleDocOrDriveUrl(v.googleDocUrl);const vau=normalizeMediaAudioUrl(v.mp3Url);return(
+{vr.length>0&&<div className="mb-6"><h3 className="text-sm font-semibold text-violet-500 mb-3 flex items-center gap-2"><Clapperboard size={14}/>Media ({vr.length})</h3><div className="space-y-2">{vr.map(v=>{const sec=findSectionForVideoTags(v.tags,sections);const vpg=sec?.num!=null?pdfPageForArticle(sec.num):null;const vdoc=normalizeGoogleDocOrDriveUrl(v.googleDocUrl);const audioTracks=mediaAudioTrackList(v);return(
 <div key={v.id} role="button" tabIndex={0} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();onOpenMindMap(sec?.id??null);}}} onClick={()=>onOpenMindMap(sec?.id??null)} className="bg-zinc-100/90 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800/40 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3 hover:border-amber-600/50 dark:hover:border-amber-500/35 cursor-pointer transition-all text-left w-full">
-<div className="flex items-center gap-3 flex-1 min-w-0"><PlayCircle size={20} className="text-red-400 flex-shrink-0"/><div className="flex-1 min-w-0"><p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate">{v.title}</p><p className="text-xs text-zinc-500 dark:text-zinc-500">{v.channel} • {v.tags.map(tagDisplayLabel).join(", ")}</p>{vau&&<audio controls className="mt-2 w-full max-w-md" src={vau} preload="metadata" onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()}/>}</div></div>
+<div className="flex items-center gap-3 flex-1 min-w-0"><PlayCircle size={20} className="text-red-400 flex-shrink-0"/><div className="flex-1 min-w-0"><p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate">{v.title}</p><p className="text-xs text-zinc-500 dark:text-zinc-500">{v.channel} • {v.tags.map(tagDisplayLabel).join(", ")}</p>{audioTracks.length>0&&<div className="mt-2 w-full max-w-md" onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()}><MediaAudioPlaylist tracks={audioTracks}/></div>}</div></div>
 <div className="flex flex-wrap items-center gap-2 sm:ml-auto sm:justify-end">{vdoc&&<a href={vdoc} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()} className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:underline dark:text-blue-400"><FileText size={12} aria-hidden />สรุป Doc</a>}{vpg!=null&&<a href={criminalLawPdfUrl(vpg)} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} onKeyDown={e=>e.stopPropagation()} className="inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 dark:text-sky-300 hover:underline"><ExternalLink size={12} aria-hidden />PDF ม.{sec.num} หน้า {vpg}</a>}</div>
 {mmHint(sec?"ไปมาตราที่เกี่ยวข้องใน Mind Map":"เปิด Mind Map (ใส่ tag ที่มีเลขมาตราใน Media เพื่อโฟกัส)")}</div>);})}</div></div>}
 {nr.length>0&&<div className="mb-6"><h3 className="text-sm font-semibold text-blue-400 mb-3 flex items-center gap-2"><FileText size={14}/>Lecture Notes ({nr.length})</h3><div className="space-y-2">{nr.map(n=>{const sn=n.sectionId?findNodeById(sections,n.sectionId):null;const npg=sn?.type==="section"&&sn.num!=null?pdfPageForArticle(sn.num):null;return(
